@@ -41,3 +41,7 @@ router.post(async (req, res) => {
 });
 
 export default router.handler();
+
+// Fix: Add these dependencies to your package.json and install them:
+// npm install @huggingface/inference formidable next-connect
+// Or, if you do not use this API route in production, remove or comment out this file to avoid build errors.
