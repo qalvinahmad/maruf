@@ -65,7 +65,10 @@ const nextConfig = {
         fs: false,
         net: false,
         tls: false,
-        punycode: false
+        punycode: false,
+        '@huggingface/inference': false,
+        formidable: false,
+        'next-connect': false
       };
     }
     

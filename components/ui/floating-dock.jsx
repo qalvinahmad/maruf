@@ -30,6 +30,7 @@ export const FloatingDock = ({ items = [] }) => {
                 {item.icon}
               </div>
             </motion.button>
+            
             <AnimatePresence>
               {hoveredIndex === index && (
                 <motion.div
