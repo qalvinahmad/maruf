@@ -76,6 +76,9 @@ const ShopItem = memo(({ item, onEdit, onDelete }) => {
   );
 });
 
+// Add display name
+ShopItem.displayName = 'ShopItem';
+
 export default function DashboardProjects() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
