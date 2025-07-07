@@ -1,4 +1,4 @@
-import { IconClock, IconFire, IconGift, IconMinus, IconSparkles, IconStar, IconTarget, IconTrophy, IconX } from '@tabler/icons-react';
+import { IconClock, IconFlame, IconGift, IconMinus, IconStar, IconTarget, IconTrophy, IconX } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
@@ -154,7 +154,7 @@ const DailyChallenge = () => {
     const iconProps = { size, className: "drop-shadow-sm" };
     switch (type?.toLowerCase()) {
       case 'reading': return <IconTarget {...iconProps} className="text-purple-100" />;
-      case 'practice': return <IconFire {...iconProps} className="text-orange-200" />;
+      case 'practice': return <IconFlame {...iconProps} className="text-orange-200" />;
       case 'learning': return <IconStar {...iconProps} className="text-yellow-200" />;
       default: return <IconTrophy {...iconProps} className="text-blue-200" />;
     }
