@@ -1,14 +1,10 @@
-// Disable this API route for production build to avoid missing dependency errors.
-// You can delete this file or comment out all code below if not needed.
+// This is a disabled placeholder for the transcribe API
+// Original version requires @huggingface/inference, formidable, and next-connect
 
 export default function handler(req, res) {
   res.status(503).json({
-    error: 'Transcribe API is disabled in production build due to missing dependencies.',
-    message: 'Install @huggingface/inference, formidable, and next-connect to enable this endpoint.'
+    success: false,
+    error: 'This API endpoint has been disabled for production build',
+    message: 'The transcribe API requires additional dependencies that are not installed in production'
   });
 }
-
-
-// Fix: Add these dependencies to your package.json and install them:
-// npm install @huggingface/inference formidable next-connect
-// Or, if you do not use this API route in production, remove or comment out this file to avoid build errors.
