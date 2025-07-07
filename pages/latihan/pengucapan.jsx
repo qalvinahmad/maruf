@@ -1,10 +1,13 @@
 import { IconArrowLeft, IconMicrophone, IconPlayerPlay, IconPlayerStop, IconVolume, IconVolumeOff } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 
-export default function LatihanPengucapan() {
+const isServer = typeof window === 'undefined';
+
+const LatihanPengucapan = () => {
   const router = useRouter();
   const { huruf, nama, deskripsi, kategori } = router.query;
   const [isRecording, setIsRecording] = useState(false);
@@ -17,7 +20,7 @@ export default function LatihanPengucapan() {
   
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
-  const audioRef = useRef(new Audio());
+  const audioRef = useRef(null);
   
   useEffect(() => {
     // Simulasi loading progress
@@ -105,7 +108,7 @@ export default function LatihanPengucapan() {
     }
     
     // Simulasi audio contoh (dalam implementasi nyata, gunakan URL audio yang sebenarnya)
-    audioRef.current.src = '/audio/example.mp3';
+    audioRef.current = new Audio('/audio/example.mp3');
     audioRef.current.muted = isMuted;
     
     audioRef.current.onended = () => {
@@ -343,4 +346,8 @@ export default function LatihanPengucapan() {
       </main>
     </div>
   );
-}
+};
+
+export default dynamic(() => Promise.resolve(LatihanPengucapan), {
+  ssr: false
+});
