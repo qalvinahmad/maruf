@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'; // Add AnimatePresence
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { FloatingDock } from '../../../../components/ui/floating-dock'; // Fixed path
+import { FloatingDock } from '../../../../components/ui/floating-dock';
 import { Dropdown } from '../../../components/widget/dropdown';
 import { supabase } from '../../../lib/supabaseClient';
 
