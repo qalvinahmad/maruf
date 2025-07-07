@@ -1,4 +1,4 @@
-import { IconAlert, IconCheck, IconSettings } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconSettings } from '@tabler/icons-react';
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -165,7 +165,7 @@ const ContentAccuracySetting = () => {
         
         {accuracyChanged && (
           <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-            <IconAlert size={16} />
+            <IconAlertTriangle size={16} />
             <span className="text-sm">Ada perubahan yang belum disimpan</span>
           </div>
         )}
@@ -312,7 +312,7 @@ const ContentAccuracySetting = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
         <div className="flex items-start gap-3">
           <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-            <IconAlert size={14} className="text-blue-600" />
+            <IconAlertTriangle size={14} className="text-blue-600" />
           </div>
           <div>
             <h4 className="font-medium text-blue-900 mb-2">Informasi Pengaturan Akurasi</h4>
