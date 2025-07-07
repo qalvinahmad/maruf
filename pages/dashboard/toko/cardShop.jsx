@@ -6,15 +6,30 @@ import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { formatNumber } from '../../../utils/formatNumber';
 
-const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
+// Add isServer check to prevent errors during static rendering
+const isServer = typeof window === 'undefined';
+
+const ShopItemCard = ({ 
+  item = {}, // Provide default empty object
+  activeTab = 'badge', 
+  isItemOwned = () => false, // Default function
+  handlePurchase = () => {} // Default function
+}) => {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user } = useAuth ? useAuth() : { user: null };
   const [loading, setLoading] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const owned = isItemOwned(item.id);
+  
+  // Only run client-side checks to avoid SSR errors
+  const owned = !isServer && item && item.id ? isItemOwned(item.id) : false;
 
-  // Function to handle equipment
+  // Prevent SSR errors by skipping user-dependent code during build
+  const isPremiumMembership = item && item.name === 'Premium Membership';
+
+  // Function to handle equipment - skip execution during static rendering
   const handleEquip = async () => {
+    if (isServer) return;
+    
     try {
       setLoading(true);
       const userId = user?.id || localStorage.getItem('userId');
@@ -83,8 +98,10 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
     }
   };
 
-  // ENHANCED: Function to get the correct image source with hover video support
+  // Safe media source getter with null checks
   const getImageSource = () => {
+    if (!item) return null;
+    
     // For hover state, prioritize video if available
     if (isHovered && item.image && item.image.endsWith('.mp4')) {
       return { src: item.image, type: 'video' };
@@ -100,20 +117,16 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
     };
   };
 
-  // OPTIMIZED: Function to check if current source is video
-  const isVideoSource = () => {
-    const source = getImageSource();
-    return source && source.endsWith('.mp4');
-  };
-
-  // Check if this is the Premium Membership item
-  const isPremiumMembership = item.name === 'Premium Membership';
+  // Skip rendering completely during static generation if no item
+  if (isServer || !item || !item.id) {
+    return null; // Return null instead of component during build
+  }
 
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(item.id * 0.02, 0.5) }}
+      transition={{ delay: Math.min((item?.id || 0) * 0.02, 0.5) }}
       className={`p-4 rounded-xl shadow-sm hover:shadow-md transition-all border overflow-hidden relative ${
         isPremiumMembership 
           ? 'border-blue-300 shadow-xl hover:shadow-2xl' 
@@ -354,12 +367,12 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
       <h3 className={`font-semibold mb-1 line-clamp-2 ${
         isPremiumMembership ? 'text-white' : 'text-gray-800'
       }`}>
-        {item.name}
+        {item.name || 'Unnamed Item'}
       </h3>
       <p className={`text-sm mb-3 line-clamp-2 ${
         isPremiumMembership ? 'text-white/90' : 'text-gray-600'
       }`}>
-        {item.description}
+        {item.description || 'No description available'}
       </p>
       
       <div className="flex justify-between items-center relative z-10">
@@ -367,7 +380,7 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
           isPremiumMembership ? 'text-yellow-300' : 'text-secondary'
         }`}>
           <IconCoin size={16} className={isPremiumMembership ? 'text-yellow-300' : 'text-yellow-300'} />
-          {formatNumber(item.price)} Point
+          {formatNumber(item.price || 0)} Point
         </span>
         {owned ? (
           <button
@@ -383,7 +396,7 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
           </button>
         ) : (
           <button 
-            onClick={() => handlePurchase(item)}
+            onClick={() => item && handlePurchase(item)}
             className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors font-medium ${
               isPremiumMembership
                 ? 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-sm border border-white/30'
@@ -395,13 +408,9 @@ const ShopItemCard = ({ item, activeTab, isItemOwned, handlePurchase }) => {
           </button>
         )}
       </div>
-
-      {/* Premium membership glow effect - REMOVED all colored gradients */}
-      {isPremiumMembership && (
-        <div className="absolute inset-0 rounded-xl bg-white/5 pointer-events-none" />
-      )}
     </motion.div>
   );
 };
 
+// Export a default component
 export default ShopItemCard;
