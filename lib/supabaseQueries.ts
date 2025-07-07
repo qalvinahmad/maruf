@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase } from './supabaseClient'; // Fix import path
 
 // Fungsi untuk pengumuman
 export const announcementQueries = {

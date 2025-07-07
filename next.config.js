@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   env: {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
@@ -11,7 +10,7 @@ const nextConfig = {
       'images.pexels.com',
       'illustrations.popsy.co',
       'cdn.jsdelivr.net',
-      'your-image-domain.com', // Add your image domains here
+      'your-image-domain.com',
       'luiidomyeinydwttqrmc.supabase.co'
     ],
     deviceSizes: [640, 750, 828, 1080, 1200],
@@ -27,15 +26,6 @@ const nextConfig = {
     }
   },
   output: 'standalone',
-  // async redirects() {
-  //   return [
-  //     {
-  //       source: '/',
-  //       destination: '/authentication/login',
-  //       permanent: true,
-  //     },
-  //   ];
-  // },
   async headers() {
     return [
       {
@@ -66,7 +56,6 @@ const nextConfig = {
     ];
   },
   serverRuntimeConfig: {
-    // Will only be available on the server side
     prerender: false
   },
   webpack: (config, { isServer }) => {
@@ -79,9 +68,20 @@ const nextConfig = {
         punycode: false
       };
     }
-    config.module.rules.push({
-      test: /\.(gif|png|jpe?g|svg|webp)$/i,
-      use: [
+    
+    config.module.rules = config.module.rules.filter(rule => {
+      if (rule.test && rule.test.toString().includes('\\.(gif|png|jpe?g|svg|webp)')) {
+        return false;
+      }
+      return true;
+    });
+    
+    return config;
+  },
+  pageExtensions: ['jsx', 'js', 'ts', 'tsx'],
+};
+
+module.exports = nextConfig;
         {
           loader: 'image-webpack-loader',
           options: {
