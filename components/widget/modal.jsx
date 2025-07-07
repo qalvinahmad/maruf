@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Dispatch, SetStateAction, useState } from "react";
+import { useState } from "react";
 import { FiAlertCircle } from "react-icons/fi";
 
 const Modal = () => {
@@ -20,9 +20,6 @@ const Modal = () => {
 const SpringModal = ({
   isOpen,
   setIsOpen,
-}: {
-  isOpen: boolean;
-  setIsOpen: Dispatch<SetStateAction<boolean>>;
 }) => {
   return (
     <AnimatePresence>
