@@ -50,9 +50,9 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET,OPTIONS,PATCH,DELETE,POST,PUT' },
-          { key: 'Access-Control-Allow-Headers', value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, apikey, authorization' },
-        ],
-      },
+          { key: 'Access-Control-Allow-Headers', value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, apikey, authorization' }
+        ]
+      }
     ];
   },
   serverRuntimeConfig: {
@@ -69,6 +69,7 @@ const nextConfig = {
       };
     }
     
+    // Remove problematic image optimization rules
     config.module.rules = config.module.rules.filter(rule => {
       if (rule.test && rule.test.toString().includes('\\.(gif|png|jpe?g|svg|webp)')) {
         return false;
@@ -78,11 +79,10 @@ const nextConfig = {
     
     return config;
   },
-  pageExtensions: ['jsx', 'js', 'ts', 'tsx'],
+  pageExtensions: ['jsx', 'js', 'ts', 'tsx']
 };
 
 module.exports = nextConfig;
-        {
           loader: 'image-webpack-loader',
           options: {
             mozjpeg: {
