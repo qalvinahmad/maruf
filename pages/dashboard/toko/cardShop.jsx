@@ -16,7 +16,10 @@ const ShopItemCard = ({
   handlePurchase = () => {} // Default function
 }) => {
   const router = useRouter();
-  const { user } = useAuth ? useAuth() : { user: null };
+  
+  // FIX: Always call useAuth unconditionally 
+  const { user } = useAuth() || { user: null };
+  
   const [loading, setLoading] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   
