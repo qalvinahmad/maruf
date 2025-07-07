@@ -1,7 +1,7 @@
 import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabaseClient';
+import { supabase } from '../../../../lib/supabaseClient'; // Fixed path
 
 const ContentManageLevel = () => {
   const [roadmapLevels, setRoadmapLevels] = useState([]);
