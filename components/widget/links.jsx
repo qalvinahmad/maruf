@@ -2,6 +2,13 @@ import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import React, { useRef } from "react";
 import { FiArrowRight } from "react-icons/fi";
 
+/**
+ * @typedef {Object} LinkItem
+ * @property {string} title
+ * @property {string} href
+ * @property {string} description
+ */
+
 export const Links = () => {
   return (
     <section className="bg-neutral-950 p-4 md:p-8">
