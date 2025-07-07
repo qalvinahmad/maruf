@@ -1,5 +1,5 @@
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
-import React, { useRef } from "react";
+import { useRef } from "react";
 import { FiArrowRight } from "react-icons/fi";
 
 /**
@@ -48,15 +48,8 @@ export const Links = () => {
   );
 };
 
-interface LinkProps {
-  heading: string;
-  imgSrc: string;
-  subheading: string;
-  href: string;
-}
-
-const Link = ({ heading, imgSrc, subheading, href }: LinkProps) => {
-  const ref = useRef<HTMLAnchorElement | null>(null);
+const Link = ({ heading, imgSrc, subheading, href }) => {
+  const ref = useRef(null);
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -67,10 +60,10 @@ const Link = ({ heading, imgSrc, subheading, href }: LinkProps) => {
   const top = useTransform(mouseYSpring, [0.5, -0.5], ["40%", "60%"]);
   const left = useTransform(mouseXSpring, [0.5, -0.5], ["60%", "70%"]);
 
-  const handleMouseMove = (
-    e: React.MouseEvent<HTMLAnchorElement, MouseEvent>
-  ) => {
-    const rect = ref.current!.getBoundingClientRect();
+  const handleMouseMove = (e) => {
+    if (!ref.current) return;
+    
+    const rect = ref.current.getBoundingClientRect();
 
     const width = rect.width;
     const height = rect.height;
