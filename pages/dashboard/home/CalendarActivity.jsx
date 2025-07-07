@@ -46,7 +46,7 @@ const CalendarActivity = ({ profileData }) => {
     const currentDay = today.getDate();
     
     // Simulate some active days based on streak
-    for (let i = Math.max(1, currentDay - profileData.streak); i <= currentDay; i++) {
+    for (let i = Math.max(1, currentDay - (profileData?.streak || 0)); i <= currentDay; i++) {
       activeDays.push(i);
     }
     
@@ -206,7 +206,7 @@ const CalendarActivity = ({ profileData }) => {
               <div className="text-sm text-green-600">Hari aktif bulan ini</div>
             </div>
             <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-              <div className="text-2xl font-bold text-blue-700">{profileData.streak}</div>
+              <div className="text-2xl font-bold text-blue-700">{profileData?.streak || 0}</div>
               <div className="text-sm text-blue-600">Streak saat ini</div>
             </div>
             <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
