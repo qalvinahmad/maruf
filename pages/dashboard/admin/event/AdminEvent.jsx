@@ -1,12 +1,12 @@
 import { IconActivity, IconArrowRight, IconBell, IconBook, IconCalendar, IconChartBar, IconCheck, IconChevronDown, IconChevronUp, IconEdit, IconFileAnalytics, IconList, IconLogout, IconPlus, IconSearch, IconSettings, IconTrash, IconTrophy, IconUsers, IconX } from '@tabler/icons-react';
 import { eachMonthOfInterval, endOfYear, format, startOfYear } from 'date-fns';
-import { AnimatePresence, motion } from 'framer-motion'; // Add AnimatePresence
+import { AnimatePresence, motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { FloatingDock } from '../../../../components/ui/floating-dock';
-import { Dropdown } from '../../../components/widget/dropdown';
-import { supabase } from '../../../lib/supabaseClient';
+import { Dropdown } from '../../../../components/widget/dropdown';
+import { supabase } from '../../../../lib/supabaseClient';
 
 const getMonthName = (monthNumber) => {
   return new Date(2024, monthNumber - 1).toLocaleString('id-ID', { month: 'long' });
