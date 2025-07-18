@@ -26,7 +26,7 @@ function ProfileHeader({ profileData }) {
 }
 
 // Komponen MainContent
-function MainContent({ activeTab, roadmapData, expandedLevel, setExpandedLevel, handleStartLesson }) {
+function MainContent({ activeTab, roadmapData, expandedLevel, setExpandedLevel, handleStartLesson, userProfile, onEnergyUpdate }) {
   if (activeTab === 'roadmap') {
     return (
       <Roadmap
@@ -34,6 +34,8 @@ function MainContent({ activeTab, roadmapData, expandedLevel, setExpandedLevel, 
         expandedLevel={expandedLevel}
         setExpandedLevel={setExpandedLevel}
         handleStartLesson={handleStartLesson}
+        userProfile={userProfile}
+        onEnergyUpdate={onEnergyUpdate}
       />
     );
   }
@@ -220,6 +222,30 @@ export default function Belajar() {
     isEligible: false
   });
 
+  // Handler untuk update energy
+  const handleEnergyUpdate = (newEnergy) => {
+    setProfileData(prev => ({
+      ...prev,
+      energy: newEnergy
+    }));
+  };
+
+  // Listen for energy updates from other components
+  useEffect(() => {
+    const handleCustomEnergyUpdate = (e) => {
+      console.log('DashboardBelajar: Custom energy update event:', e.detail);
+      if (e.detail && e.detail.newEnergy !== undefined) {
+        handleEnergyUpdate(e.detail.newEnergy);
+      }
+    };
+
+    window.addEventListener('energyUpdated', handleCustomEnergyUpdate);
+
+    return () => {
+      window.removeEventListener('energyUpdated', handleCustomEnergyUpdate);
+    };
+  }, []);
+
   const handleStartLesson = (levelId, subLessonId) => {
     router.push(`/dashboard/lesson/${levelId}/${subLessonId}`);
   };
@@ -248,12 +274,67 @@ export default function Belajar() {
             expandedLevel={expandedLevel}
             setExpandedLevel={setExpandedLevel}
             handleStartLesson={handleStartLesson}
+            userProfile={profileData}
+            onEnergyUpdate={handleEnergyUpdate}
           />
         </div>
       </div>
       
-      {/* Daily Challenge Floating Card */}
-      <DailyChallenge />
+      {/* Daily Challenge Floating Card - positioned higher */}
+      <div style={{ position: 'fixed', bottom: '140px', right: '16px', zIndex: 50 }}>
+        <DailyChallenge />
+      </div>
+      
+      {/* Mini Games Floating Button - positioned lower */}
+      <motion.button
+        initial={{ opacity: 0, scale: 0.8, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.4 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => {
+          console.log('Navigating to mini games...');
+          router.push('/dashboard/mini-games/MiniGames');
+        }}
+        className="fixed bottom-20 right-4 z-40 w-14 h-14 bg-gradient-to-br from-green-500 via-emerald-500 to-teal-600 rounded-full shadow-2xl flex items-center justify-center border-2 border-white/30 backdrop-blur-sm"
+        title="Mini Games"
+      >
+        <div className="relative">
+          {/* Game controller icon - using proper SVG */}
+          <svg className="w-7 h-7 text-white drop-shadow-sm" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 9h2v2H6V9zm0 4h2v2H6v-2zm8-4h2v2h-2V9zm0 4h2v2h-2v-2zm-4.5-7C4.84 2 2 4.84 2 8.5S4.84 15 9.5 15s7.5-2.84 7.5-6.5S14.16 2 9.5 2zm0 11C6.46 13 4 10.54 4 7.5S6.46 2 9.5 2s5.5 2.46 5.5 5.5S12.54 13 9.5 13z"/>
+            <path d="M17 6h3v2h-3V6zm0 4h3v2h-3v-2z"/>
+          </svg>
+          
+          {/* Game sparkle effect */}
+          <motion.div
+            className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full"
+            animate={{
+              scale: [1, 1.3, 1],
+              opacity: [0.7, 1, 0.7],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+        </div>
+        
+        {/* Pulse ring animation */}
+        <motion.div
+          className="absolute inset-0 rounded-full border-2 border-green-300"
+          animate={{
+            scale: [1, 1.4, 1],
+            opacity: [0.6, 0, 0.6],
+          }}
+          transition={{
+            duration: 2.5,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        />
+      </motion.button>
       
   {/* Enhanced FloatingDock with better positioning and styling */}
           <motion.div 

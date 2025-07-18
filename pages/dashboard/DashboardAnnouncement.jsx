@@ -6,7 +6,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import { FloatingDock } from '../../components/ui/floating-dock';
-import { Dropdown } from '../../components/widget/dropdown';
+import AdminDropdown from '../../components/widget/AdminDropdown';
 import { supabase } from '../../lib/supabaseClient';
 import { announcementQueries, notificationQueries } from '../../lib/supabaseQueries';
 
@@ -468,7 +468,7 @@ const DashboardAnnouncement = () => {
                           {/* Advanced Filter with Better UX */}
                           <div className="flex items-center gap-3">
                             <div className="text-xs text-gray-500 hidden lg:block">Filter:</div>
-                            <Dropdown 
+                            <AdminDropdown 
                               label="Semua Kategori"
                               options={filterOptions}
                               value={filter}

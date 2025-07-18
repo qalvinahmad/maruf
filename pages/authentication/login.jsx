@@ -4,8 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { Toast, showToast } from '../../components/ui/toast';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabaseClient';
 
 // Animasi untuk page transitions
 const pageVariants = {
@@ -25,7 +25,7 @@ export const config = {
 };
 
 export default function Login() {
-  const { loading: authLoading, isAuthenticated, user } = useAuth();
+  const { loading: authLoading, isAuthenticated, user, signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -86,22 +86,30 @@ export default function Login() {
   // Enhanced form validation
   const validateForm = () => {
     if (!email.trim()) {
-      setError('Email tidak boleh kosong');
+      const errorMsg = 'Email tidak boleh kosong';
+      setError(errorMsg);
+      showToast.error(errorMsg);
       return false;
     }
     
     if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Format email tidak valid');
+      const errorMsg = 'Format email tidak valid';
+      setError(errorMsg);
+      showToast.error(errorMsg);
       return false;
     }
     
     if (!password.trim()) {
-      setError('Password tidak boleh kosong');
+      const errorMsg = 'Password tidak boleh kosong';
+      setError(errorMsg);
+      showToast.error(errorMsg);
       return false;
     }
     
     if (password.length < 6) {
-      setError('Password minimal 6 karakter');
+      const errorMsg = 'Password minimal 6 karakter';
+      setError(errorMsg);
+      showToast.error(errorMsg);
       return false;
     }
     
@@ -145,33 +153,31 @@ export default function Login() {
       const cleanEmail = email.trim().toLowerCase();
       const cleanPassword = password.trim();
 
-      // Direct authentication without pre-checks
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password: cleanPassword
-      });
+      // Use AuthContext signIn method
+      const result = await signIn(cleanEmail, cleanPassword);
 
-      if (error) {
-        throw error;
+      if (result.success) {
+        // Handle remember me
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', cleanEmail);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+
+        showToast.success('Login berhasil! Mengalihkan ke dashboard...');
+        console.log('Login successful, redirecting to dashboard...');
+        
+        // Small delay to show toast
+        setTimeout(() => {
+          router.push('/dashboard/home/Dashboard');
+        }, 1000);
       }
-
-      if (!data.user || !data.session) {
-        throw new Error('Login gagal - tidak ada data sesi');
-      }
-
-      // Handle remember me
-      if (rememberMe) {
-        localStorage.setItem('rememberedEmail', cleanEmail);
-      } else {
-        localStorage.removeItem('rememberedEmail');
-      }
-
-      // Success - AuthContext will handle the redirect
-      console.log('Login successful');
 
     } catch (error) {
       console.error('Login error:', error);
-      setError(getErrorMessage(error));
+      const errorMessage = getErrorMessage(error);
+      setError(errorMessage);
+      showToast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -182,6 +188,7 @@ export default function Login() {
     setEmail('demo@example.com');
     setPassword('demo123456');
     setError('');
+    showToast.info('Data demo telah dimasukkan. Silakan klik login.');
   };
 
   if (authLoading) {
@@ -193,15 +200,17 @@ export default function Login() {
   }
 
   return (
-    <motion.div 
-      className="min-h-screen flex bg-gray-50 relative"
-      initial="initial"
-      animate="in"
-      exit="out"
-      variants={pageVariants}
-      transition={pageTransition}
-    >
-      <AuthTabs currentPage="login" />
+    <>
+      <Toast />
+      <motion.div 
+        className="min-h-screen flex bg-gradient-to-br from-purple-500 to-blue-700 relative"
+        initial="initial"
+        animate="in"
+        exit="out"
+        variants={pageVariants}
+        transition={pageTransition}
+      >
+        <AuthTabs currentPage="login" />
 
       <Head>
         <title>Login | Makhrojul Huruf</title>
@@ -211,7 +220,7 @@ export default function Login() {
 
       {/* Kolom Kiri - Visual */}
       <motion.div 
-        className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-purple-500 to-blue-700 p-12 flex-col justify-between"
+        className="hidden lg:flex lg:w-1/2 p-8 flex-col justify-between"
         initial="hidden"
         animate="visible"
         variants={illustrationVariants}
@@ -250,14 +259,14 @@ export default function Login() {
       </motion.div>
 
       {/* Kolom Kanan - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-3 lg:p-6">
         <motion.div
-          className="w-full max-w-md"
+          className="w-full max-w-xl bg-white rounded-2xl shadow-xl p-10"
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="text-center mb-10">
+          <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-800 mb-2">Login</h2>
             <p className="text-gray-600">Masukkan kredensial Anda untuk melanjutkan</p>
           </div>
@@ -285,13 +294,13 @@ export default function Login() {
             onSubmit={handleSubmit}
           >
             {/* Email Field */}
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-gray-700 text-sm font-medium mb-2">
                 Email <span className="text-red-500">*</span>
               </label>
               <input
                 type="email"
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
                   error && error.includes('email') || error.includes('Email') 
                     ? 'border-red-300 bg-red-50' 
                     : 'border-gray-300'
@@ -308,7 +317,7 @@ export default function Login() {
             </div>
 
             {/* Password Field */}
-            <div className="mb-6">
+            <div className="mb-4">
               <div className="flex justify-between mb-2">
                 <label className="block text-gray-700 text-sm font-medium">
                   Password <span className="text-red-500">*</span>
@@ -323,7 +332,7 @@ export default function Login() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
+                  className={`w-full px-4 py-2.5 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors ${
                     error && error.includes('password') || error.includes('Password')
                       ? 'border-red-300 bg-red-50' 
                       : 'border-gray-300'
@@ -358,7 +367,7 @@ export default function Login() {
             </div>
 
             {/* Remember Me */}
-            <div className="mb-6">
+            <div className="mb-5">
               <label className="flex items-center cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -411,14 +420,14 @@ export default function Login() {
           )}
 
           {/* Divider */}
-          <div className="flex items-center my-6">
+          <div className="flex items-center my-4">
             <div className="flex-grow border-t border-gray-300"></div>
             <span className="px-4 text-gray-500 text-sm">Atau login dengan</span>
             <div className="flex-grow border-t border-gray-300"></div>
           </div>
 
           {/* Register Link */}
-          <div className="text-center mt-8">
+          <div className="text-center mt-5">
             <p className="text-gray-600">
               Belum punya akun?{' '}
               <button
@@ -432,8 +441,18 @@ export default function Login() {
             </p>
           </div>
 
+          {/* Back to Home */}
+          <div className="text-center mt-3">
+            <button
+              onClick={() => router.push('/')}
+              className="text-gray-500 hover:text-indigo-600 text-sm hover:underline"
+            >
+              ← Kembali ke Beranda
+            </button>
+          </div>
+
           {/* Help Text */}
-          <div className="text-center mt-6">
+          <div className="text-center mt-4">
             <p className="text-xs text-gray-500">
               Dengan masuk, Anda menyetujui{' '}
               <Link href="/terms" className="text-indigo-600 hover:underline">
@@ -448,7 +467,8 @@ export default function Login() {
           </div>
         </motion.div>
       </div>
-    </motion.div>
+      </motion.div>
+    </>
   );
 }
 

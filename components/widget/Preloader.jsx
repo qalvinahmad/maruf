@@ -1,95 +1,247 @@
-import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import Image from 'next/image';
+import { useEffect } from 'react';
 
-const Preloader = ({ isLoading, setIsLoading }) => {
-  const [percentage, setPercentage] = useState(0);
-
+const PreLoader = ({ setLoading }) => {
   useEffect(() => {
-    const totalTime = 2000; // 2 detik
-    const intervalTime = 20; // 20ms
-    const steps = totalTime / intervalTime;
-    let currentStep = 0;
-    
-    const interval = setInterval(() => {
-      currentStep++;
-      const newPercentage = Math.min(100, Math.round((currentStep / steps) * 100));
-      setPercentage(newPercentage);
-      
-      if (newPercentage >= 100) {
-        clearInterval(interval);
-        setIsLoading(false);
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [setLoading]);
+
+  const preloaderVariants = {
+    initial: {
+      y: "0"
+    },
+    exit: {
+      y: "-100%",
+      transition: {
+        duration: 0.8,
+        ease: "easeInOut"
       }
-    }, intervalTime);
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, [setIsLoading]);
+  const textVariants = {
+    hidden: {
+      y: 50,
+      opacity: 0
+    },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: {
+        duration: 0.6,
+        ease: "easeOut"
+      }
+    }
+  };
 
-  const circumference = 2 * Math.PI * 45; // radius = 45
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  const containerVariants = {
+    hidden: { opacity: 1 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.4,
+        delayChildren: 0.3
+      }
+    }
+  };
+
+  const logoVariants = {
+    hidden: { 
+      scale: 0,
+      opacity: 0,
+      rotate: -180
+    },
+    visible: { 
+      scale: 1,
+      opacity: 1,
+      rotate: 0,
+      transition: {
+        duration: 0.8,
+        ease: "easeOut",
+        type: "spring",
+        stiffness: 100
+      }
+    }
+  };
+
+  const characterVariants = {
+    hidden: { 
+      scale: 0,
+      opacity: 0,
+      y: 50
+    },
+    visible: { 
+      scale: 1,
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.6,
+        ease: "easeOut",
+        type: "spring",
+        stiffness: 120
+      }
+    }
+  };
+
+  const progressVariants = {
+    hidden: { width: 0 },
+    visible: { 
+      width: "100%",
+      transition: {
+        duration: 2.5,
+        ease: "easeInOut"
+      }
+    }
+  };
 
   return (
-    <>
-      {/* Google Fonts - Poppins */}
-      <link 
-        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" 
-        rel="stylesheet" 
-      />
-      
-      {isLoading && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#00acee]"
-          style={{ fontFamily: 'Poppins, sans-serif' }}
+    <motion.div 
+      className="fixed inset-0 w-full h-screen bg-blue-600 text-white z-[9999] flex flex-col justify-center items-center overflow-hidden"
+      variants={preloaderVariants}
+      initial="initial"
+      exit="exit"
+    >
+      {/* Characters Section */}
+      <motion.div
+        className="flex items-center justify-center gap-8 mb-8"
+        initial="hidden"
+        animate="visible"
+        transition={{ delay: 0.2, staggerChildren: 0.3 }}
+      >
+        {/* Male Character */}
+        <motion.div
+          variants={characterVariants}
+          className="relative"
         >
-          <div className="bg-white/30 backdrop-blur-md p-8 rounded-lg flex flex-col items-center justify-center">
-
-                      
-          <img src="/loading.gif" alt="Loading" className="mb-4 w-16 h-16" />
-         
-            {/* Circular Progress Bar */}
-            <div className="relative mb-6">
-              <svg 
-                className="w-32 h-32 transform -rotate-90" 
-                viewBox="0 0 100 100"
-              >
-                {/* Background Circle */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  stroke="white"
-                  strokeOpacity="0.2"
-                  strokeWidth="6"
-                  fill="transparent"
-                />
-                {/* Progress Circle */}
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="45"
-                  stroke="white"
-                  strokeWidth="6"
-                  fill="transparent"
-                  strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                  className="transition-all duration-300 ease-out"
-                />
-              </svg>
-              {/* Percentage Text in Center */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-2xl font-bold text-white">
-                  {percentage}%
-                </span>
-              </div>
-            </div>
-
-            <p className="text-white font-poppins text-center">
-              ...
-            </p>
+          <div className="w-20 h-20 md:w-24 md:h-24 relative">
+            <Image
+              src="/male.png"
+              alt="Anak Laki-laki"
+              fill
+              className="object-contain"
+              priority
+            />
           </div>
-        </div>
-      )}
-    </>
+        </motion.div>
+
+        {/* Logo */}
+        <motion.div
+          className="mx-4"
+          variants={logoVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <div className="w-20 h-20 md:w-24 md:h-24 bg-white rounded-full flex items-center justify-center shadow-2xl relative">
+            <Image
+              src="/logo.png"
+              alt="Al-Makruf Logo"
+              width={60}
+              height={60}
+              className="object-contain"
+              priority
+            />
+          </div>
+        </motion.div>
+
+        {/* Female Character */}
+        <motion.div
+          variants={characterVariants}
+          className="relative"
+        >
+          <div className="w-20 h-20 md:w-24 md:h-24 relative">
+            <Image
+              src="/female.png"
+              alt="Anak Perempuan"
+              fill
+              className="object-contain"
+              priority
+            />
+          </div>
+        </motion.div>
+      </motion.div>
+
+      {/* Text Container */}
+      <motion.div 
+        className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-4 flex-wrap h-auto w-auto text-center px-4"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.span 
+          className="text-2xl md:text-3xl lg:text-4xl font-extrabold min-w-max relative"
+          variants={textVariants}
+          style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.3)' }}
+        >
+          Belajar
+        </motion.span>
+        <motion.span 
+          className="text-2xl md:text-3xl lg:text-4xl font-extrabold min-w-max relative"
+          variants={textVariants}
+          style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.3)' }}
+        >
+          Makhrojul
+        </motion.span>
+        <motion.span 
+          className="text-2xl md:text-3xl lg:text-4xl font-extrabold min-w-max relative"
+          variants={textVariants}
+          style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.3)' }}
+        >
+          Huruf
+        </motion.span>
+        <motion.span 
+          className="text-2xl md:text-3xl lg:text-4xl font-extrabold min-w-max relative text-yellow-300"
+          variants={textVariants}
+          style={{ textShadow: '2px 2px 8px rgba(0,0,0,0.3)' }}
+        >
+          Menyenangkan
+        </motion.span>
+      </motion.div>
+
+      {/* Subtitle
+      <motion.div
+        className="mt-6 text-center px-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.5, duration: 0.6 }}
+      >
+        <p className="text-lg md:text-xl text-blue-100 font-medium">
+          Platform Pembelajaran Al-Qur'an Terbaik
+        </p>
+      </motion.div> */}
+
+      {/* Progress Bar
+      <motion.div
+        className="mt-8 w-64 md:w-80 h-2 bg-white/20 rounded-full overflow-hidden"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 1, duration: 0.5 }}
+      >
+        <motion.div
+          className="h-full bg-gradient-to-r from-yellow-400 via-yellow-500 to-orange-500 rounded-full"
+          variants={progressVariants}
+          initial="hidden"
+          animate="visible"
+        />
+      </motion.div> */}
+
+      {/* Loading Text */}
+      <motion.div
+        className="mt-4 text-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.8, duration: 0.5 }}
+      >
+        <p className="text-sm text-blue-200 animate-pulse">
+          Mempersiapkan pengalaman belajar terbaik...
+        </p>
+      </motion.div>
+    </motion.div>
   );
 };
 
-export default Preloader;
+export default PreLoader;

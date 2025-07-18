@@ -619,8 +619,8 @@ export default function Header({
 
   return (
     <>
-      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-8 sm:px-12 lg:px-16 py-4">
+      <header className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg sticky top-0 z-50 w-full">
+        <div className="w-full px-8 sm:px-12 lg:px-16 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-4">
               {/* Conditionally render avatar - hide on dashboard page */}
@@ -641,26 +641,41 @@ export default function Header({
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center text-xs gap-3">
-                  <span className="flex items-center gap-1 bg-indigo-800/50 px-2 py-1 rounded-full">
+                <div className="flex flex-wrap items-center gap-3 mt-2">
+                  {/* Level Badge */}
+                  <span className="flex items-center gap-1 bg-indigo-800/50 px-2 py-1 rounded-full text-xs">
                     <span>Level {currentProfileData.level || 1}</span>
                   </span>
-                  <span className="flex items-center gap-1 text-purple-200">
-                    <IconCalendar size={12} />
-                    <span>{currentProfileData.streak || 0} Hari Streak</span>
-                  </span>
-                  <span className="flex items-center gap-1 text-yellow-300">
-                    <IconTrophy size={12} />
-                    <span>{currentProfileData.xp || 0} XP</span>
-                  </span>
-                  <span className="flex items-center gap-1 text-green-300">
-                    <IconAward size={12} />
-                    <span>{formatNumber(currentProfileData.points || 0)} Point</span>
-                  </span>
-                  <span className="flex items-center gap-1 text-cyan-300">
-                    <IconBattery1 size={12} />
-                    <span>{currentProfileData.energy || 0} Energi</span>
-                  </span>
+                  
+                  {/* Streak Counter */}
+                  <div className="bg-white rounded-2xl px-4 py-2 flex items-center gap-2 shadow-lg">
+                    <span className="text-lg font-bold text-black">{currentProfileData.streak || 0}</span>
+                    <IconCalendar size={16} className="text-purple-600" />
+                  </div>
+                  
+                  {/* XP Counter */}
+                  <div className="bg-white rounded-2xl px-4 py-2 flex items-center gap-2 shadow-lg">
+                    <span className="text-lg font-bold text-black">{currentProfileData.xp || 0}</span>
+                    <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                      <IconTrophy size={12} className="text-white" />
+                    </div>
+                  </div>
+                  
+                  {/* Points Counter */}
+                  <div className="bg-white rounded-2xl px-4 py-2 flex items-center gap-2 shadow-lg">
+                    <span className="text-lg font-bold text-black">{formatNumber(currentProfileData.points || 0)}</span>
+                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                      <IconAward size={12} className="text-white" />
+                    </div>
+                  </div>
+                  
+                  {/* Energy Counter */}
+                  <div className="bg-white rounded-2xl px-4 py-2 flex items-center gap-2 shadow-lg">
+                    <span className="text-lg font-bold text-black">{currentProfileData.energy || 0}</span>
+                    <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
+                      <IconBattery1 size={12} className="text-white" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

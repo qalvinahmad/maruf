@@ -1,11 +1,15 @@
-import { IconActivity, IconArrowRight, IconBell, IconBook, IconCalendar, IconChartBar, IconCheck, IconChevronDown, IconChevronUp, IconEdit, IconFileAnalytics, IconList, IconLogout, IconPlus, IconSearch, IconSettings, IconTrash, IconTrophy, IconUsers, IconX } from '@tabler/icons-react';
+import { IconActivity, IconBook, IconCalendarEvent, IconChartBar, IconChevronDown, IconChevronUp, IconDatabase, IconList, IconSearch, IconSettings, IconShield } from '@tabler/icons-react';
 import { eachMonthOfInterval, endOfYear, format, startOfYear } from 'date-fns';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import AdminHeader from '../../../../components/admin/adminHeader';
+import EventTahunanTab from '../../../../components/admin/tabs/EventTahunanTab';
+import PengumumanTab from '../../../../components/admin/tabs/PengumumanTab';
 import { FloatingDock } from '../../../../components/ui/floating-dock';
-import { Dropdown } from '../../../../components/widget/dropdown';
+import AdminDropdown from '../../../../components/widget/AdminDropdown';
+import { getCachedData, setCachedData } from '../../../../lib/clientSafeCache';
 import { supabase } from '../../../../lib/supabaseClient';
 
 const getMonthName = (monthNumber) => {
@@ -28,7 +32,7 @@ const AdminEvent = () => {
     status: 'Aktif'
   });
   const [isEditing, setIsEditing] = useState(false);
-  const [isCalendarExpanded, setIsCalendarExpanded] = useState(false);
+  const [isCalendarExpanded, setIsCalendarExpanded] = useState(false); // Default tertutup
 
   // Pindahkan deklarasi state filter ke atas
   const [typeFilter, setTypeFilter] = useState('all');
@@ -36,37 +40,406 @@ const AdminEvent = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [calendarEvents, setCalendarEvents] = useState({});
+  const [dailyAgenda, setDailyAgenda] = useState({});
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showAgenda, setShowAgenda] = useState(false);
+  const [activeTab, setActiveTab] = useState('events'); // Tab state for events/announcements/challenges
   
-  // Add filter function
+  // Toast notification state
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  
+  // Statistics state
+  const [statistics, setStatistics] = useState({
+    totalEvents: 0,
+    totalAnnouncements: 0,
+    totalChallenges: 0,
+    totalRegistrations: 0,
+    totalTests: 0,
+    avgScore: 0,
+    activeRewards: 0
+  });
+  
+  // Custom Filter Dropdown Component with animations
+  const FilterDropdown = ({ label, options, value, onChange, buttonText }) => {
+    const [open, setOpen] = useState(false);
+
+    const wrapperVariants = {
+      open: {
+        scaleY: 1,
+        transition: {
+          when: "beforeChildren",
+          staggerChildren: 0.1,
+        },
+      },
+      closed: {
+        scaleY: 0,
+        transition: {
+          when: "afterChildren",
+          staggerChildren: 0.1,
+        },
+      },
+    };
+
+    const iconVariants = {
+      open: { rotate: 180 },
+      closed: { rotate: 0 },
+    };
+
+    const itemVariants = {
+      open: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          when: "beforeChildren",
+        },
+      },
+      closed: {
+        opacity: 0,
+        y: -15,
+        transition: {
+          when: "afterChildren",
+        },
+      },
+    };
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+      <div className="relative min-w-[180px]">
+        {label && (
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {label}
+          </label>
+        )}
+        <motion.div animate={open ? "open" : "closed"} className="relative">
+          <button
+            onClick={() => setOpen((pv) => !pv)}
+            className="flex items-center justify-between w-full gap-2 px-3 py-2 rounded-md text-slate-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            <span className="font-medium text-sm">
+              {selectedOption ? selectedOption.label : buttonText}
+            </span>
+            <motion.span variants={iconVariants}>
+              <IconChevronDown size={16} />
+            </motion.span>
+          </button>
+
+          <motion.ul
+            initial={wrapperVariants.closed}
+            variants={wrapperVariants}
+            style={{ originY: "top", translateX: "0" }}
+            className="flex flex-col gap-1 p-2 rounded-lg bg-white shadow-xl absolute top-[105%] left-0 w-full z-50 overflow-hidden border border-gray-200"
+          >
+            {options.map((option, index) => (
+              <motion.li
+                key={`${option.value}-${index}`}
+                variants={itemVariants}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex items-center gap-2 w-full p-2 text-xs font-medium whitespace-nowrap rounded-md hover:bg-indigo-100 transition-colors cursor-pointer ${
+                  value === option.value ? 'bg-indigo-50 text-indigo-600' : 'text-slate-700 hover:text-indigo-500'
+                }`}
+              >
+                <span>{option.label}</span>
+              </motion.li>
+            ))}
+          </motion.ul>
+        </motion.div>
+
+        {/* Overlay to close dropdown when clicking outside */}
+        {open && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+        )}
+      </div>
+    );
+  };
+
+  // Custom Calendar Header Dropdown
+  const CalendarYearDropdown = ({ options, value, onChange }) => {
+    const [open, setOpen] = useState(false);
+
+    const wrapperVariants = {
+      open: {
+        scaleY: 1,
+        transition: {
+          when: "beforeChildren",
+          staggerChildren: 0.1,
+        },
+      },
+      closed: {
+        scaleY: 0,
+        transition: {
+          when: "afterChildren",
+          staggerChildren: 0.1,
+        },
+      },
+    };
+
+    const iconVariants = {
+      open: { rotate: 180 },
+      closed: { rotate: 0 },
+    };
+
+    const itemVariants = {
+      open: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          when: "beforeChildren",
+        },
+      },
+      closed: {
+        opacity: 0,
+        y: -15,
+        transition: {
+          when: "afterChildren",
+        },
+      },
+    };
+
+    return (
+      <motion.div animate={open ? "open" : "closed"} className="relative">
+        <button
+          onClick={() => setOpen((pv) => !pv)}
+          className="flex items-center gap-2 px-3 py-1 rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors font-medium text-sm"
+        >
+          <span>{value}</span>
+          <motion.span variants={iconVariants}>
+            <IconChevronDown size={16} />
+          </motion.span>
+        </button>
+
+        <motion.ul
+          initial={wrapperVariants.closed}
+          variants={wrapperVariants}
+          style={{ originY: "top", translateX: "0" }}
+          className="flex flex-col gap-1 p-2 rounded-lg bg-white shadow-xl absolute top-[105%] left-0 w-24 z-50 overflow-hidden border border-gray-200"
+        >
+          {options.map((option, index) => (
+            <motion.li
+              key={`${option.value}-${index}`}
+              variants={itemVariants}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+              className={`flex items-center gap-2 w-full p-1 text-xs font-medium whitespace-nowrap rounded-md hover:bg-indigo-100 transition-colors cursor-pointer ${
+                value === option.value ? 'bg-indigo-50 text-indigo-600' : 'text-slate-700 hover:text-indigo-500'
+              }`}
+            >
+              <span>{option.label}</span>
+            </motion.li>
+          ))}
+        </motion.ul>
+
+        {/* Overlay to close dropdown when clicking outside */}
+        {open && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setOpen(false)}
+          />
+        )}
+      </motion.div>
+    );
+  };
+  const AdminMenuCard = ({ icon, title, description, bgColor, onClick, isActive = false }) => (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ 
+        y: -8, 
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+        scale: 1.02
+      }}
+      whileTap={{ scale: 0.98 }}
+      className={`${bgColor} p-6 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer border group ${
+        isActive ? 'border-blue-200 ring-2 ring-blue-100' : 'border-gray-100/50'
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-4 mb-4">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-white to-gray-50 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow duration-300">
+          {icon}
+        </div>
+        <h3 className="font-semibold text-gray-800 group-hover:text-gray-900 transition-colors">{title}</h3>
+      </div>
+      <p className="text-sm text-gray-600 group-hover:text-gray-700 leading-relaxed">{description}</p>
+    </motion.div>
+  );
+
+  // Simplified Redis caching for events only
+  const CACHE_KEYS = {
+    EVENTS: 'admin_events_data',
+    STATISTICS: 'admin_event_statistics', 
+    CALENDAR_EVENTS: 'admin_calendar_events',
+    USER_PROFILE: 'admin_user_profile'
+  };
+
+  const CACHE_DURATIONS = {
+    EVENTS: 300, // 5 minutes
+    STATISTICS: 180, // 3 minutes
+    CALENDAR_EVENTS: 900, // 15 minutes
+    USER_PROFILE: 1800 // 30 minutes
+  };
+
+  // Clear cache helper function with specific key targeting
+  const clearCache = async (keys) => {
+    try {
+      const keysArray = Array.isArray(keys) ? keys : [keys];
+      for (const key of keysArray) {
+        await setCachedData(key, null);
+      }
+      console.log('Cache cleared for keys:', keysArray);
+    } catch (error) {
+      console.log('Cache clear error:', error.message);
+    }
+  };
+
+  // Simplified cache management for events only
+  const invalidateRelatedCaches = async (dataType) => {
+    const cacheMap = {
+      'events': [CACHE_KEYS.EVENTS, CACHE_KEYS.STATISTICS, CACHE_KEYS.CALENDAR_EVENTS],
+      'all': [CACHE_KEYS.EVENTS, CACHE_KEYS.STATISTICS, CACHE_KEYS.CALENDAR_EVENTS, CACHE_KEYS.USER_PROFILE]
+    };
+    
+    await clearCache(cacheMap[dataType] || []);
+  };
+
+  // Simplified filter function for events only
   const getFilteredEvents = (data) => {
     return data.filter(event => {
+      // Exclude "Fitur" type from all displays as requested
+      if (event.type === 'Fitur') {
+        return false;
+      }
+      
+      // Filter by active tab
+      const isAnnouncement = event.type === 'Pengumuman' || event.type === 'Sistem';
+      const isChallenge = event.type === 'Tantangan';
+      let tabMatch = false;
+      
+      if (activeTab === 'events') {
+        tabMatch = !isAnnouncement && !isChallenge;
+      } else if (activeTab === 'announcements') {
+        tabMatch = isAnnouncement;
+      }
+      
       const matchesType = typeFilter === 'all' || event.type === typeFilter;
       const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
       const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           event.description?.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesType && matchesStatus && matchesSearch;
+      return tabMatch && matchesType && matchesStatus && matchesSearch;
     });
   };
   
-  // Pindahkan deklarasi fetchEvents ke atas sebelum digunakan
-  const fetchEvents = async () => {
+  // Enhanced fetch function with comprehensive Redis caching
+  const fetchEvents = async (forceRefresh = false) => {
     try {
       setIsLoading(true);
+      
+      // Try to get cached data from Redis first
+      if (!forceRefresh) {
+        let cachedEvents = await getCachedData(CACHE_KEYS.EVENTS);
+        
+        if (cachedEvents) {
+          console.log('Loading events from Redis cache');
+          setRawEvents(cachedEvents);
+          setEvents(getFilteredEvents(cachedEvents));
+          processEventsForCalendar(cachedEvents);
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      console.log('Fetching events from database');
+      // Fetch from database with additional metadata
       const { data, error } = await supabase
         .from('events')
-        .select('*')
+        .select(`
+          *,
+          created_at,
+          updated_at
+        `)
         .order('date', { ascending: false });
 
       if (error) throw error;
 
-      const filteredData = getFilteredEvents(data || []);
-      setEvents(filteredData);
-      processEventsForCalendar(data || []);
+      const eventsData = data || [];
+      
+      // Cache in Redis with appropriate duration
+      await setCachedData(CACHE_KEYS.EVENTS, eventsData, CACHE_DURATIONS.EVENTS);
+      console.log('Events cached in Redis for', CACHE_DURATIONS.EVENTS, 'seconds');
+      
+      setRawEvents(eventsData);
+      setEvents(getFilteredEvents(eventsData));
+      processEventsForCalendar(eventsData);
     } catch (error) {
-      console.error('Error:', error);
-      alert('Error fetching events');
+      console.error('Error fetching events:', error);
+      alert('Error fetching events: ' + error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Enhanced statistics fetching with Redis caching
+  const fetchStatistics = async (forceRefresh = false) => {
+    try {
+      // Try cache first
+      if (!forceRefresh) {
+        let cachedStats = await getCachedData(CACHE_KEYS.STATISTICS);
+        
+        if (cachedStats) {
+          console.log('Loading statistics from Redis cache');
+          setStatistics(cachedStats);
+          return;
+        }
+      }
+
+      console.log('Fetching statistics from database');
+      // Fetch data from multiple tables in parallel
+      const [
+        eventsResult,
+        registrationsResult,
+        testsResult,
+        testDetailsResult,
+        rewardsResult
+      ] = await Promise.all([
+        supabase.from('events').select('id, type'),
+        supabase.from('event_registrations').select('id, registration_status'),
+        supabase.from('event_pronunciation_tests').select('id'),
+        supabase.from('event_test_details').select('score').not('score', 'is', null),
+        supabase.from('event_rewards').select('id')
+      ]);
+
+      const events = eventsResult.data || [];
+      const registrations = registrationsResult.data || [];
+      const tests = testsResult.data || [];
+      const testDetails = testDetailsResult.data || [];
+      const rewards = rewardsResult.data || [];
+
+      // Calculate statistics - exclude "Fitur" type
+      const stats = {
+        totalEvents: events.filter(e => e.type !== 'Pengumuman' && e.type !== 'Sistem' && e.type !== 'Tantangan' && e.type !== 'Fitur').length,
+        totalAnnouncements: events.filter(e => e.type === 'Pengumuman' || e.type === 'Sistem').length,
+        totalChallenges: events.filter(e => e.type === 'Tantangan').length,
+        totalRegistrations: registrations.filter(r => r.registration_status === 'confirmed').length,
+        totalTests: tests.length,
+        avgScore: testDetails.length > 0 ? Math.round(testDetails.reduce((sum, t) => sum + t.score, 0) / testDetails.length) : 0,
+        activeRewards: rewards.length
+      };
+
+      // Cache with shorter duration for frequently changing data
+      await setCachedData(CACHE_KEYS.STATISTICS, stats, CACHE_DURATIONS.STATISTICS);
+      console.log('Statistics cached in Redis for', CACHE_DURATIONS.STATISTICS, 'seconds');
+      setStatistics(stats);
+
+    } catch (error) {
+      console.error('Error fetching statistics:', error);
     }
   };
   
@@ -92,27 +465,105 @@ const AdminEvent = () => {
     }
   };
 
-  // Cek apakah user sudah login
+  // Update auth check with user profile caching
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn');
-    
-    if (!isLoggedIn || isLoggedIn !== 'true') {
-      router.push('/authentication/login');
-      return;
-    }
-    
-    // Ambil data user dari localStorage
-    setUserName(localStorage.getItem('userName') || 'Admin');
-    
-    fetchEvents();
+    const checkAdminAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          router.replace('/authentication/admin/loginAdmin');
+          return;
+        }
+
+        // Try to get user profile from cache first
+        let cachedProfile = await getCachedData(CACHE_KEYS.USER_PROFILE);
+        
+        if (cachedProfile && cachedProfile.email === session.user.email) {
+          console.log('Loading user profile from Redis cache');
+          setUserName(cachedProfile.full_name || 'Admin');
+          setIsLoading(false);
+          
+          // Load data in parallel
+          await Promise.all([
+            fetchEvents(),
+            fetchStatistics()
+          ]);
+          return;
+        }
+
+        // Check if user is admin - update query to use email
+        const { data: adminData, error: adminError } = await supabase
+          .from('admin_profiles')
+          .select('*')
+          .eq('email', session.user.email)
+          .single();
+
+        console.log('Admin check:', { adminData, adminError }); // Debug log
+
+        if (adminError || !adminData) {
+          // Not an admin, redirect to login
+          await supabase.auth.signOut();
+          router.replace('/authentication/admin/loginAdmin');
+          return;
+        }
+
+        // Verify admin role
+        if (!adminData.role || !['admin', 'superadmin'].includes(adminData.role)) {
+          await supabase.auth.signOut();
+          router.replace('/authentication/admin/loginAdmin');
+          return;
+        }
+
+        // Cache admin profile
+        await setCachedData(CACHE_KEYS.USER_PROFILE, adminData, CACHE_DURATIONS.USER_PROFILE);
+        console.log('User profile cached in Redis for', CACHE_DURATIONS.USER_PROFILE, 'seconds');
+
+        // Set admin data
+        setUserName(adminData.full_name || 'Admin');
+        setIsLoading(false);
+
+        // Load data in parallel for better performance
+        await Promise.all([
+          fetchEvents(),
+          fetchStatistics()
+        ]);
+
+      } catch (error) {
+        console.error('Auth check error:', error);
+        router.replace('/authentication/admin/loginAdmin');
+      }
+    };
+
+    checkAdminAuth();
   }, [router]);
+
+  // Simple toast notification functions
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'success' });
+    }, 3000);
+  };
+
+  // Calendar manual control (removed auto-expand)
+  // useEffect(() => {
+  //   // Auto-expand calendar when events tab is active and has events
+  //   if (activeTab === 'events' && events.length > 0 && !isCalendarExpanded) {
+  //     const timer = setTimeout(() => {
+  //       setIsCalendarExpanded(true);
+  //     }, 1000); // Delay 1 second after loading
+      
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [activeTab, events.length]);
 
   // Effect untuk filter yang tidak menyebabkan infinite loop
   useEffect(() => {
     if (rawEvents.length > 0) {
       setEvents(getFilteredEvents(rawEvents));
     }
-  }, [typeFilter, statusFilter, searchTerm, rawEvents]);
+  }, [typeFilter, statusFilter, searchTerm, rawEvents, activeTab]);
   
   // Handle real-time updates
   const handleRealTimeUpdate = (payload) => {
@@ -143,6 +594,9 @@ const AdminEvent = () => {
         }]);
 
       if (error) throw error;
+      
+      // Invalidate cache and refresh data
+      await invalidateRelatedCaches('events');
       fetchEvents();
     } catch (error) {
       console.error('Error:', error);
@@ -166,6 +620,9 @@ const AdminEvent = () => {
         .eq('id', id);
 
       if (error) throw error;
+      
+      // Invalidate cache and refresh data
+      await invalidateRelatedCaches('events');
       fetchEvents();
     } catch (error) {
       console.error('Error:', error);
@@ -182,6 +639,9 @@ const AdminEvent = () => {
         .eq('id', id);
 
       if (error) throw error;
+      
+      // Invalidate cache and refresh data
+      await invalidateRelatedCaches('events');
       fetchEvents();
     } catch (error) {
       console.error('Error:', error);
@@ -189,9 +649,32 @@ const AdminEvent = () => {
     }
   };
 
-  // Modified handleSaveEvent with optimistic updates
+  // Enhanced handleSaveEvent with cache invalidation and toast notifications
   const handleSaveEvent = async () => {
     try {
+      // Validation
+      if (!currentEvent.title.trim()) {
+        showToast('Judul event tidak boleh kosong!', 'error');
+        return;
+      }
+      
+      if (!currentEvent.date) {
+        showToast('Tanggal event harus diisi!', 'error');
+        return;
+      }
+
+      // Validate date is not in the past for new events
+      if (!isEditing) {
+        const selectedDate = new Date(currentEvent.date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (selectedDate < today) {
+          showToast('Tanggal event tidak boleh di masa lalu!', 'error');
+          return;
+        }
+      }
+
       if (isEditing) {
         // Optimistic update for edit
         setEvents(current =>
@@ -200,6 +683,7 @@ const AdminEvent = () => {
           )
         );
         await updateEvent(currentEvent.id, currentEvent);
+        showToast('Event berhasil diperbarui!', 'success');
       } else {
         // Optimistic update for create
         const newEvent = {
@@ -209,20 +693,38 @@ const AdminEvent = () => {
         };
         setEvents(current => [newEvent, ...current]);
         await createEvent(currentEvent);
+        showToast('Event berhasil ditambahkan!', 'success');
       }
+      
+      // Invalidate related caches after successful save
+      await invalidateRelatedCaches('events');
+      
       setShowModal(false);
+      
+      // Refresh data to ensure consistency
+      await Promise.all([
+        fetchEvents(true),
+        fetchStatistics(true)
+      ]);
     } catch (error) {
       console.error('Error saving event:', error);
+      showToast('Gagal menyimpan event. Silakan coba lagi.', 'error');
       // Revert optimistic update on error
-      fetchEvents();
+      fetchEvents(true);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userEmail');
-    router.push('/');
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem('isAdmin');
+      localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userName');
+      window.location.href = '/authentication/admin/loginAdmin';
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
   
   const handleAddEvent = () => {
@@ -233,6 +735,9 @@ const AdminEvent = () => {
       type: 'Acara',
       description: '',
       date: new Date().toISOString().split('T')[0],
+      time: '',
+      speaker: '',
+      speaker_title: '',
       status: 'Aktif'
     });
     setShowModal(true);
@@ -244,17 +749,29 @@ const AdminEvent = () => {
     setShowModal(true);
   };
   
-  // Modified handleDeleteEvent with optimistic update
+  // Enhanced handleDeleteEvent with cache invalidation and toast notifications
   const handleDeleteEvent = async (id) => {
     if (confirm('Apakah Anda yakin ingin menghapus event ini?')) {
       try {
         // Optimistic delete
         setEvents(current => current.filter(event => event.id !== id));
         await deleteEvent(id);
+        
+        // Invalidate related caches after successful delete
+        await invalidateRelatedCaches('events');
+        
+        showToast('Event berhasil dihapus!', 'success');
+        
+        // Refresh data to ensure consistency
+        await Promise.all([
+          fetchEvents(true),
+          fetchStatistics(true)
+        ]);
       } catch (error) {
         console.error('Error deleting event:', error);
+        showToast('Gagal menghapus event. Silakan coba lagi.', 'error');
         // Revert optimistic delete on error
-        fetchEvents();
+        fetchEvents(true);
       }
     }
   };
@@ -296,7 +813,7 @@ const AdminEvent = () => {
     { 
       title: "Aktivitas", 
       icon: <IconActivity />, 
-      onClick: () => router.push('/dashboard/admin/DashboardActivity')
+      onClick: () => router.push('/dashboard/admin/activity/DashboardActivity')
     },
     // { 
     //   title: "Pengumuman", 
@@ -321,17 +838,44 @@ const AdminEvent = () => {
   ];
   
 
-  // Add this function after fetchEvents
-  const processEventsForCalendar = (events) => {
+  // Simplified function to process events data for calendar
+  const processEventsForCalendar = (eventsData = []) => {
     const eventsByMonth = {};
-    events.forEach(event => {
-      const monthKey = format(new Date(event.date), 'MM-yyyy');
+    const dailyAgenda = {};
+    
+    // Process events only - removed announcements and challenges dependencies
+    eventsData.forEach(event => {
+      const eventDate = new Date(event.date);
+      const monthKey = format(eventDate, 'MM-yyyy');
+      const dateKey = format(eventDate, 'yyyy-MM-dd');
+      
+      // Group by month for calendar display
       if (!eventsByMonth[monthKey]) {
         eventsByMonth[monthKey] = [];
       }
-      eventsByMonth[monthKey].push(event);
+      eventsByMonth[monthKey].push({
+        ...event,
+        type: event.type || 'event',
+        priority: event.priority || 'medium'
+      });
+
+      // Group by date for daily agenda
+      if (!dailyAgenda[dateKey]) {
+        dailyAgenda[dateKey] = [];
+      }
+      dailyAgenda[dateKey].push({
+        id: event.id,
+        title: event.title,
+        type: event.type || 'event',
+        priority: event.priority || 'medium',
+        location: event.location || 'TBA',
+        time: event.time || '00:00',
+        description: event.description || ''
+      });
     });
+    
     setCalendarEvents(eventsByMonth);
+    setDailyAgenda(dailyAgenda);
   };
 
   // Add this before the return statement
@@ -367,14 +911,36 @@ const AdminEvent = () => {
     }
   }, [typeFilter, statusFilter, searchTerm]);
 
-  // Filter options
+  // Handle keyboard events for modal
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && showModal) {
+        setShowModal(false);
+      }
+    };
+
+    if (showModal) {
+      document.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden'; // Prevent background scroll
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset'; // Restore scroll
+    };
+  }, [showModal]);
+
+  // Filter options - removed "Fitur" type for annual events
   const filterOptions = {
     type: [
       { value: 'all', label: 'Semua Tipe' },
       { value: 'Kegiatan', label: 'Kegiatan' },
       { value: 'Pengumuman', label: 'Pengumuman' },
+      { value: 'Sistem', label: 'Sistem' },
+      { value: 'Tantangan', label: 'Tantangan Harian' },
       { value: 'Maintenance', label: 'Maintenance' },
       { value: 'Update', label: 'Update Sistem' }
+      // Removed "Fitur" type as requested
     ],
     status: [
       { value: 'all', label: 'Semua Status' },
@@ -389,7 +955,7 @@ const AdminEvent = () => {
     })
   };
 
-  // Replace renderFilters with this updated version
+  // Updated renderFilters with custom dropdown components
   const renderFilters = () => (
     <motion.div
       initial={{ opacity: 0 }}
@@ -399,19 +965,19 @@ const AdminEvent = () => {
     >
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <Dropdown
+          <FilterDropdown
             label="Tipe Event"
-            value={typeFilter}
             options={filterOptions.type}
+            value={typeFilter}
             onChange={(value) => setTypeFilter(value)}
-            className="min-w-[180px]"
+            buttonText="Semua Tipe"
           />
-          <Dropdown
+          <FilterDropdown
             label="Status"
-            value={statusFilter}
             options={filterOptions.status}
+            value={statusFilter}
             onChange={(value) => setStatusFilter(value)}
-            className="min-w-[180px]"
+            buttonText="Semua Status"
           />
         </div>
 
@@ -431,267 +997,176 @@ const AdminEvent = () => {
     </motion.div>
   );
 
-  // Update calendar year selector
+  // Enhanced calendar header with auto-expand functionality
   const renderCalendarHeader = () => (
     <div className="flex justify-between items-center">
       <div className="flex items-center gap-4">
         <h2 className="text-xl font-bold text-gray-800">Kalender Event</h2>
-        <Dropdown
-          value={selectedYear}
+        <CalendarYearDropdown
+        className="z-50"
           options={filterOptions.year}
+          value={selectedYear}
           onChange={(value) => setSelectedYear(parseInt(value))}
-          className="w-32"
         />
       </div>
-      <button
+      <motion.button
         onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
-        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
       >
-        {isCalendarExpanded ? (
-          <>
-            <span>Tutup Kalender</span>
+        <span>{isCalendarExpanded ? 'Tutup Kalender' : 'Buka Kalender'}</span>
+        <motion.div
+          animate={{ rotate: isCalendarExpanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {isCalendarExpanded ? (
             <IconChevronUp size={20} />
-          </>
-        ) : (
-          <>
-            <span>Buka Kalender</span>
+          ) : (
             <IconChevronDown size={20} />
-          </>
-        )}
-      </button>
+          )}
+        </motion.div>
+      </motion.button>
     </div>
   );
 
+  // Enhanced dropdown component for event form
+  const EventFormDropdown = ({ label, value, options, onChange, placeholder }) => {
+    const [open, setOpen] = useState(false);
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    return (
+      <div>
+        <label className="block text-sm font-medium mb-1 text-gray-700">{label}</label>
+        <motion.div animate={open ? "open" : "closed"} className="relative">
+          <button
+            onClick={() => setOpen(!open)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-300 bg-white hover:border-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span className="text-sm text-gray-900">
+              {selectedOption ? selectedOption.label : placeholder || 'Pilih...'}
+            </span>
+            <motion.span
+              variants={{
+                open: { rotate: 180 },
+                closed: { rotate: 0 }
+              }}
+              transition={{ duration: 0.2 }}
+            >
+              <IconChevronDown size={16} />
+            </motion.span>
+          </button>
+
+          <motion.ul
+            initial={{ scaleY: 0, opacity: 0 }}
+            variants={{
+              open: {
+                scaleY: 1,
+                opacity: 1,
+                transition: {
+                  when: "beforeChildren",
+                  staggerChildren: 0.05,
+                },
+              },
+              closed: {
+                scaleY: 0,
+                opacity: 0,
+                transition: {
+                  when: "afterChildren",
+                  staggerChildren: 0.05,
+                },
+              },
+            }}
+            style={{ originY: "top" }}
+            className="flex flex-col gap-1 p-2 rounded-lg bg-white shadow-xl border absolute top-full left-0 w-full mt-1 z-10 max-h-60 overflow-y-auto"
+          >
+            {options.map((option) => (
+              <motion.li
+                key={option.value}
+                variants={{
+                  open: {
+                    opacity: 1,
+                    y: 0,
+                  },
+                  closed: {
+                    opacity: 0,
+                    y: -15,
+                  },
+                }}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex items-center gap-2 w-full p-2 text-sm font-medium whitespace-nowrap rounded-md transition-colors cursor-pointer ${
+                  value === option.value
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'hover:bg-gray-100 text-gray-700 hover:text-gray-900'
+                }`}
+              >
+                <span>{option.label}</span>
+              </motion.li>
+            ))}
+          </motion.ul>
+        </motion.div>
+      </div>
+    );
+  };
+
   // Update event modal type selector
   const renderEventTypeSelect = () => (
-    <Dropdown
+    <EventFormDropdown
       label="Tipe"
-      name="type"
       value={currentEvent.type}
       options={filterOptions.type.filter(opt => opt.value !== 'all')}
       onChange={(value) => handleInputChange({ target: { name: 'type', value }})}
-      className="w-full"
+      placeholder="Pilih tipe event"
     />
   );
 
   // Update event modal status selector
   const renderEventStatusSelect = () => (
-    <Dropdown
+    <EventFormDropdown
       label="Status"
-      name="status" 
       value={currentEvent.status}
       options={filterOptions.status.filter(opt => opt.value !== 'all')}
       onChange={(value) => handleInputChange({ target: { name: 'status', value }})}
-      className="w-full"
+      placeholder="Pilih status event"
     />
   );
 
-  // Add these state variables after other state declarations
-  const [challenges, setChallenges] = useState([]);
-  const [challengeFilter, setChallengeFilter] = useState('all');
-  const [challengeSearch, setChallengeSearch] = useState('');
-  const [showAddChallengeModal, setShowAddChallengeModal] = useState(false);
-  const [editingChallenge, setEditingChallenge] = useState(null);
 
-  // Add this fetch function after other fetch functions
-  const fetchChallenges = async () => {
+
+
+
+  // Update useEffect to not fetch challenges separately since they're loaded in auth check
+  // useEffect(() => {
+  //   fetchChallenges();
+  // }, [];
+
+  // Manual refresh handler for cache management
+  const handleRefreshData = async () => {
     try {
-      const { data, error } = await supabase
-        .from('daily_challenges')
-        .select('*')
-        .order('start_date', { ascending: false });
-
-      if (error) throw error;
-      setChallenges(data || []);
+      setIsLoading(true);
+      
+      // Clear all caches
+      await invalidateRelatedCaches('all');
+      
+      // Refresh all data
+      await Promise.all([
+        fetchEvents(true),
+        fetchStatistics(true)
+      ]);
+      
+      console.log('All data refreshed successfully');
     } catch (error) {
-      console.error('Error fetching challenges:', error);
+      console.error('Error refreshing data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Add useEffect to fetch challenges
-  useEffect(() => {
-    fetchChallenges();
-  }, []);
-
-  // Add handler for challenge submission
-  const handleSubmitChallenge = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    
-    try {
-      const challengeData = {
-        title: formData.get('title'),
-        description: formData.get('description'),
-        difficulty: formData.get('difficulty'),
-        points: parseInt(formData.get('points')),
-        start_date: formData.get('start_date'),
-        end_date: formData.get('end_date'),
-        is_active: true
-      };
-
-      if (editingChallenge) {
-        const { error } = await supabase
-          .from('daily_challenges')
-          .update(challengeData)
-          .eq('id', editingChallenge.id);
-
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('daily_challenges')
-          .insert([challengeData]);
-
-        if (error) throw error;
-      }
-
-      setShowAddChallengeModal(false);
-      setEditingChallenge(null);
-      fetchChallenges();
-
-    } catch (error) {
-      console.error('Error saving challenge:', error);
-      alert('Failed to save challenge');
-    }
-  };
-
-  // Add ChallengeModal component
-  const ChallengeModal = () => (
-    <AnimatePresence>
-      {showAddChallengeModal && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-        >
-          <motion.div
-            initial={{ scale: 0.95 }}
-            animate={{ scale: 1 }}
-            className="bg-white rounded-xl p-6 w-full max-w-2xl"
-          >
-            <h3 className="text-xl font-semibold mb-4">
-              {editingChallenge ? 'Edit Tantangan' : 'Tambah Tantangan Baru'}
-            </h3>
-            <form onSubmit={handleSubmitChallenge} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Judul</label>
-                <input
-                  type="text"
-                  name="title"
-                  required
-                  defaultValue={editingChallenge?.title}
-                  className="w-full p-2 border rounded"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Deskripsi</label>
-                <textarea
-                  name="description"
-                  required
-                  defaultValue={editingChallenge?.description}
-                  className="w-full p-2 border rounded h-24"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Level</label>
-                  <select
-                    name="difficulty"
-                    required
-                    defaultValue={editingChallenge?.difficulty || 'beginner'}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="beginner">Pemula</option>
-                    <option value="intermediate">Menengah</option>
-                    <option value="advanced">Lanjutan</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Poin</label>
-                  <input
-                    type="number"
-                    name="points"
-                    required
-                    min="1"
-                    defaultValue={editingChallenge?.points || 100}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tanggal Mulai</label>
-                  <input
-                    type="date"
-                    name="start_date"
-                    required
-                    defaultValue={editingChallenge?.start_date?.split('T')[0]}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Tanggal Selesai</label>
-                  <input
-                    type="date"
-                    name="end_date"
-                    required
-                    defaultValue={editingChallenge?.end_date?.split('T')[0]}
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddChallengeModal(false);
-                    setEditingChallenge(null);
-                  }}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                  {editingChallenge ? 'Simpan' : 'Tambah'}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
-  // Add these challenge handlers
-  const handleEditChallenge = (challenge) => {
-    setEditingChallenge(challenge);
-    setShowAddChallengeModal(true);
-  };
-
-  const handleDeleteChallenge = async (id) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus tantangan ini?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('daily_challenges')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      fetchChallenges();
-      alert('Tantangan berhasil dihapus');
-    } catch (error) {
-      console.error('Error deleting challenge:', error);
-      alert('Gagal menghapus tantangan');
-    }
-  };
-
-  // Add new state for tab control after other state declarations
-  const [activeTab, setActiveTab] = useState('events'); // 'events' or 'challenges'
-
-  // Add this TabNavigation component before the return statement
+  // Simplified TabNavigation component - removed challenges tab
   const TabNavigation = () => (
     <div className="mb-6 border-b">
       <div className="flex space-x-4">
@@ -707,13 +1182,13 @@ const AdminEvent = () => {
         </button>
         <button
           className={`py-4 px-6 focus:outline-none ${
-            activeTab === 'challenges'
+            activeTab === 'announcements'
               ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
               : 'text-gray-500 hover:text-gray-700'
           }`}
-          onClick={() => setActiveTab('challenges')}
+          onClick={() => setActiveTab('announcements')}
         >
-          Tantangan Harian
+          Pengumuman
         </button>
       </div>
     </div>
@@ -727,559 +1202,248 @@ const AdminEvent = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       
+      {/* Simple Toast Notification */}
+      {toast.show && (
+        <motion.div
+          initial={{ opacity: 0, y: -50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -50 }}
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white font-medium ${
+            toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+          }`}
+        >
+          {toast.message}
+        </motion.div>
+      )}
+      
       {isLoading ? (
         <div className="flex justify-center items-center h-screen">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       ) : (
         <>
-          {/* Header */}
-          <header className="bg-white shadow-sm sticky top-0 z-40">
-            <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-white">
-                  {userName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                    {userName}
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Administrator</span>
-                  </h2>
-                  <div className="flex items-center text-xs text-gray-500 gap-3">
-                    <span>Level 10 • Admin</span>
-                    <span className="flex items-center gap-1 text-purple-600">
-                      <IconCalendar size={12} />
-                      <span>Admin Panel</span>
-                    </span>
-                    <span className="flex items-center gap-1 text-yellow-600">
-                      <IconTrophy size={12} />
-                      <span>Full Access</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1"
-              >
-                <IconLogout size={16} />
-                <span className="hidden md:inline">Keluar</span>
-              </button>
-            </div>
-          </header>
+          {/* Admin Header */}
+          <AdminHeader 
+            user={{
+              name: userName,
+              level: 10,
+              role: 'Administrator',
+              accessLevel: 'Full Access'
+            }}
+            onLogout={handleLogout}
+            title="Panel Pengumuman dan kelola konten"
+            subtitle="Kelola konten mingguan dan pengumuman untuk menjaga peserta didik tetap terlibat dalam pembelajaran"
+          />
 
           <main className="container mx-auto px-4 py-8">
-            <div className="bg-gradient-to-r from-secondary to-blue-700 rounded-2xl p-6 mb-8 text-white relative overflow-hidden">
-              <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full"></div>
-              <div className="absolute bottom-0 right-0 w-64 h-64 bg-white/5 rounded-full transform translate-x-1/4 translate-y-1/4"></div>
+            <div className="max-w-5xl mx-auto px-4 py-4">
+
+            {/* Hero Content Section */}
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ 
+                opacity: 1, 
+                y: 0,
+                background: [
+                  "linear-gradient(135deg, #00acee 0%, #38bdf8 50%, #87ceeb 100%)",
+                  "linear-gradient(135deg, #0891b2 0%, #00acee 50%, #bae6fd 100%)", 
+                  "linear-gradient(135deg, #00acee 0%, #38bdf8 50%, #87ceeb 100%)"
+                ]
+              }}
+              transition={{ 
+                delay: 0.5, 
+                duration: 0.8,
+                background: {
+                  duration: 4,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }
+              }}
+              className="relative min-h-[320px] text-white p-8 rounded-3xl overflow-hidden mb-8"
+              style={{
+                background: "linear-gradient(135deg, #00acee 0%, #38bdf8 50%, #87ceeb 100%)"
+              }}
+            >
+              {/* Dynamic decorative elements */}
+              <motion.div 
+                animate={{ 
+                  scale: [1, 1.2, 1],
+                  rotate: [0, 180, 360],
+                  opacity: [0.1, 0.15, 0.1]
+                }}
+                transition={{
+                  duration: 8,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="absolute -top-12 -right-12 w-40 h-40 bg-white rounded-full"
+              ></motion.div>
+              <motion.div 
+                animate={{ 
+                  scale: [1, 0.8, 1],
+                  x: [0, 20, 0],
+                  y: [0, -10, 0],
+                  opacity: [0.05, 0.1, 0.05]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: 1
+                }}
+                className="absolute bottom-0 right-0 w-64 h-64 bg-white rounded-full transform translate-x-1/4 translate-y-1/4"
+              ></motion.div>
               
-              <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold mb-2">Panel Pengumuman dan kelola konten</h1>
-                  <p className="text-white/80 max-w-md">Manajemen pengumuman penting dan mengelola konten platform</p>
-                </div>
-                <button 
+              {/* Additional floating elements */}
+              <motion.div
+                animate={{
+                  y: [-10, 10, -10],
+                  x: [0, 15, 0],
+                  opacity: [0.1, 0.2, 0.1]
+                }}
+                transition={{
+                  duration: 5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: 2
+                }}
+                className="absolute top-1/4 left-1/4 w-20 h-20 bg-white rounded-full"
+              ></motion.div>
+                {/* Content */}
+                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                  <div className="flex-1">
+                    <motion.h1 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.2 }}
+                      className="text-3xl lg:text-4xl font-bold mb-3 bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent drop-shadow-lg"
+                    >
+                      Manajemen Event
+                    </motion.h1>
+                    <motion.p 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="text-white/95 max-w-md text-lg leading-relaxed drop-shadow-sm"
+                    >
+                      Kelola event pembelajaran dan pengumuman sistem untuk menciptakan pengalaman belajar yang engaging dan terorganisir
+                    </motion.p>
+                  </div>
                   
-                  onClick={handleAddEvent}
-                  className="bg-white text-secondary font-semibold py-2 px-4 rounded-lg hover:bg-white/90 transition-colors flex items-center gap-2 shadow-md"
-                >
-                  <span>Buat Event</span>
-                  <IconArrowRight size={18} />
-                </button>
+                 
+                </div>
+              </motion.div>
+
+              {/* Menu Admin Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <AdminMenuCard 
+                  icon={<IconDatabase className="text-blue-600" size={20} />}
+                  title="Analisis Data"
+                  description="Analisis penggunaan platform dan rekomendasi perbaikan"
+                  bgColor="bg-white"
+                  onClick={() => router.push('/dashboard/admin/data/AdminData')}
+                  isActive={false}
+                />
+                <AdminMenuCard 
+                  icon={<IconBook className="text-green-600" size={20} />}
+                  title="Kelola Konten"
+                  description="Kelola materi, modul, dan konten pembelajaran makhrojul huruf"
+                  bgColor="bg-white"
+                  onClick={() => router.push('/admin/content/AdminContent')}
+                  isActive={false}
+                />
+                <AdminMenuCard 
+                  icon={<IconCalendarEvent className="text-purple-600" size={20} />}
+                  title="Event & Aktivitas"
+                  description="Kelola event dan aktivitas khusus pembelajaran"
+                  bgColor="bg-white"
+                  onClick={() => router.push('/dashboard/admin/event/AdminEvent')}
+                  isActive={false}
+                />
+                <AdminMenuCard 
+                  icon={<IconShield className="text-amber-600" size={20} />}
+                  title="Verifikasi"
+                  description="Verifikasi akun guru dan pengawasan sistem pembelajaran"
+                  bgColor="bg-white"
+                  onClick={() => router.push('/dashboard/admin/verification/AdminVerif')}
+                  isActive={false}
+                />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer"
-                onClick={() => router.push('/dashboard/admin/data/AdminData')}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                    <IconFileAnalytics size={20} />
-                  </div>
-                  <h3 className="font-semibold text-gray-800">Analisis Data</h3>
-                </div>
-                <p className="text-sm text-gray-600">Analisis penggunaan platform dan statistik pembelajaran</p>
-              </motion.div>
-              
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer"
-                onClick={() => router.push('/dashboard/admin/content/AdminContent')}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                    <IconBook size={20} />
-                  </div>
-                  <h3 className="font-semibold text-gray-800">Kelola Konten</h3>
-                </div>
-                <p className="text-sm text-gray-600">Kelola materi pembelajaran dan konten edukasi</p>
-              </motion.div>
-              
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer bg-blue-50 border-blue-200"
-                
-                onClick={() => router.push('/dashboard/admin/activity/AdminEvent')}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                    <IconBell size={20} />
-                  </div>
-                  <h3 className="font-semibold text-gray-800">Kelola Event</h3>
-                </div>
-                <p className="text-sm text-gray-600">Kelola event dan pengumuman untuk pengguna</p>
-              </motion.div>
-              
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer"
-                onClick={() => router.push('/dashboard/admin/verification/AdminVerif')}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600">
-                    <IconUsers size={20} />
-                  </div>
-                  <h3 className="font-semibold text-gray-800">Verifikasi Pengguna</h3>
-                </div>
-                <p className="text-sm text-gray-600">Kelola dan verifikasi akun pengguna platform</p>
-              </motion.div>
-            </div>
-
 
             {/* Add TabNavigation */}
             <TabNavigation />
 
             {/* Conditional rendering based on active tab */}
             {activeTab === 'events' ? (
-              <>
-                {/* Yearly Calendar */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5 }}
-                  className="mb-8 bg-white rounded-xl shadow-sm overflow-hidden"
-                >
-                  <div className="p-6 border-b">
-                    {renderCalendarHeader()}
-                  </div>
-
-                  <motion.div
-                    initial={false}
-                    animate={{ 
-                      height: isCalendarExpanded ? 'auto' : 0,
-                      opacity: isCalendarExpanded ? 1 : 0
-                    }}
-                    transition={{ duration: 0.3 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="p-6">
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {Array.from({ length: 12 }, (_, monthIndex) => {
-                          const monthKey = format(new Date(selectedYear, monthIndex), 'MM-yyyy');
-                          const monthEvents = calendarEvents[monthKey] || [];
-                          const days = generateCalendarGrid(monthIndex);
-                          
-                          return (
-                            <div key={monthIndex} className="bg-white rounded-lg shadow-sm border p-4">
-                              <h3 className="font-semibold text-center mb-3">
-                                {getMonthName(monthIndex + 1)}
-                              </h3>
-                              
-                              <div className="grid grid-cols-7 gap-1 mb-1">
-                                {['M', 'S', 'S', 'R', 'K', 'J', 'S'].map((day, i) => (
-                                  <div key={i} className="text-center text-xs font-medium text-gray-500">
-                                    {day}
-                                  </div>
-                                ))}
-                              </div>
-                              
-                              <div className="grid grid-cols-7 gap-1">
-                                {days.map((day, index) => (
-                                  <div
-                                    key={index}
-                                    className={`
-                                      aspect-square flex items-center justify-center text-xs
-                                      ${day === null ? '' : 'hover:bg-gray-50 cursor-pointer rounded'}
-                                      ${day === new Date().getDate() && 
-                                        monthIndex === new Date().getMonth() && 
-                                        selectedYear === new Date().getFullYear()
-                                          ? 'bg-secondary text-white rounded'
-                                          : ''}
-                                    `}
-                                  >
-                                    {day}
-                                  </div>
-                                ))}
-                              </div>
-                              
-                              {monthEvents.length > 0 && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <div className="text-xs text-gray-600 mb-1">
-                                    {monthEvents.length} event
-                                  </div>
-                                  {monthEvents.slice(0, 2).map((event) => (
-                                    <div
-                                      key={event.id}
-                                      className={`text-xs p-1 rounded mb-1 truncate ${
-                                        event.status === 'Aktif' 
-                                          ? 'bg-green-100 text-green-800' 
-                                          : 'bg-gray-100 text-gray-800'
-                                      }`}
-                                    >
-                                      {event.title}
-                                    </div>
-                                  ))}
-                                  {monthEvents.length > 2 && (
-                                    <div className="text-xs text-blue-600 text-center">
-                                      +{monthEvents.length - 2} lainnya
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </motion.div>
-                </motion.div>
-        
-                {/* Admin Menu Cards */}
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                  className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8"
-                >
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100"
-                  >
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                          <IconCalendar size={20} />
-                        </div>
-                        <h3 className="font-semibold text-gray-800">Total Event</h3>
-                      </div>
-                      <p className="text-2xl font-bold">{events.length}</p>
-                    </div>
-                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                      <IconArrowRight size={12} className="transform rotate-45" />
-                      <span>10% dari bulan lalu</span>
-                    </p>
-                    <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: '70%' }}></div>
-                    </div>
-                  </motion.div>
-                  
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100"
-                  >
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                          <IconBell size={20} />
-                        </div>
-                        <h3 className="font-semibold text-gray-800">Event Aktif</h3>
-                      </div>
-                      <p className="text-2xl font-bold">{events.filter(e => e.status === 'Aktif').length}</p>
-                    </div>
-                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                      <IconArrowRight size={12} className="transform rotate-45" />
-                      <span>5% dari bulan lalu</span>
-                    </p>
-                    <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-purple-600 h-1.5 rounded-full" style={{ width: '60%' }}></div>
-                    </div>
-                  </motion.div>
-                  
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100"
-                  >
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center text-yellow-600">
-                          <IconUsers size={20} />
-                        </div>
-                        <h3 className="font-semibold text-gray-800">Dijadwalkan</h3>
-                      </div>
-                      <p className="text-2xl font-bold">{events.filter(e => e.status === 'Dijadwalkan').length}</p>
-                    </div>
-                    <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                      <IconArrowRight size={12} className="transform rotate-45" />
-                      <span>15% dari bulan lalu</span>
-                    </p>
-                    <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-yellow-600 h-1.5 rounded-full" style={{ width: '40%' }}></div>
-                    </div>
-                  </motion.div>
-                </motion.div>
-                
-                {/* Filter dan Pencarian */}
-                {renderFilters()}
-                
-                {/* Tabel Event */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5, delay: 0.5 }}
-                  className="bg-white rounded-xl shadow-sm overflow-hidden"
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full table-auto">
-                      <thead className="bg-gray-50 border-b">
-                        <tr>
-                          <th className="py-3 px-4 text-left font-semibold text-gray-700">Judul</th>
-                          <th className="py-3 px-4 text-left font-semibold text-gray-700">Tipe</th>
-                          <th className="py-3 px-4 text-left font-semibold text-gray-700">Tanggal</th>
-                          <th className="py-3 px-4 text-left font-semibold text-gray-700">Status</th>
-                          <th className="py-3 px-4 text-left font-semibold text-gray-700">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {events.length > 0 ? (
-                          events.map((event) => (
-                            <tr key={event.id} className="border-b hover:bg-gray-50 transition-colors">
-                              <td className="py-3 px-4">{event.title}</td>
-                              <td className="py-3 px-4">
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  event.type === 'Acara' ? 'bg-purple-100 text-purple-800' : 
-                                  event.type === 'Sistem' ? 'bg-blue-100 text-blue-800' : 
-                                  'bg-green-100 text-green-800'
-                                }`}>
-                                  {event.type}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4">{new Date(event.date).toLocaleDateString('id-ID')}</td>
-                              <td className="py-3 px-4">
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  event.status === 'Aktif' ? 'bg-green-100 text-green-800' : 
-                                  event.status === 'Dijadwalkan' ? 'bg-yellow-100 text-yellow-800' : 
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {event.status}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className="flex gap-2">
-                                  {event.status === 'Dijadwalkan' && (
-                                    <>
-                                      <button 
-                                        onClick={() => handleEditEvent(event)}
-                                        className="p-1.5 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
-                                        title="Aktifkan"
-                                      >
-                                        <IconCheck size={18} />
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteEvent(event.id)}
-                                        className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                                        title="Hapus"
-                                      >
-                                        <IconX size={18} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {event.status === 'Aktif' && (
-                                    <>
-                                      <button 
-                                        onClick={() => handleEditEvent(event)}
-                                        className="p-1.5 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
-                                        title="Edit"
-                                      >
-                                        <IconEdit size={18} />
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteEvent(event.id)}
-                                        className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                                        title="Hapus"
-                                      >
-                                        <IconTrash size={18} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {event.status === 'Selesai' && (
-                                    <button 
-                                      onClick={() => handleEditEvent(event)}
-                                      className="p-1.5 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 transition-colors"
-                                      title="Lihat Detail"
-                                    >
-                                      <IconEdit size={18} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan="5" className="px-4 py-8 text-center text-gray-500">
-                              Tidak ada event yang ditemukan. Silakan tambahkan event baru atau ubah filter pencarian.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  
-                  {/* Pagination */}
-                  <div className="mt-4 mb-4 px-4 flex justify-between items-center">
-                    <div className="text-sm text-gray-600">
-                      Menampilkan {events.length > 0 ? '1' : '0'}-{events.length} dari {events.length} event
-                    </div>
-                    <div className="flex space-x-1">
-                      <button className="px-3 py-1 border rounded bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">Sebelumnya</button>
-                      <button className="px-3 py-1 border rounded bg-blue-600 text-white">1</button>
-                      <button className="px-3 py-1 border rounded text-gray-600 hover:bg-gray-100 transition-colors">Selanjutnya</button>
-                    </div>
-                  </div>
-                </motion.div>
-              </>
-            ) : (
-              <>
-                {/* Tantangan Harian */}
-                <div className="mt-8">
-                  <div className="bg-white rounded-xl shadow-sm p-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold text-gray-800">Tantangan Harian</h2>
-                      <button
-                        onClick={() => setShowAddChallengeModal(true)}
-                        className="bg-secondary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-                      >
-                        <IconPlus size={18} />
-                        <span>Tambah Tantangan</span>
-                      </button>
-                    </div>
-
-                    <div className="flex gap-4 mb-6">
-                      <select
-                        className="border rounded-lg px-3 py-2"
-                        value={challengeFilter}
-                        onChange={(e) => setChallengeFilter(e.target.value)}
-                      >
-                        <option value="all">Semua Level</option>
-                        <option value="beginner">Pemula</option>
-                        <option value="intermediate">Menengah</option>
-                        <option value="advanced">Lanjutan</option>
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Cari tantangan..."
-                        className="border rounded-lg px-3 py-2 flex-1"
-                        value={challengeSearch}
-                        onChange={(e) => setChallengeSearch(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full table-auto">
-                        <thead className="bg-gray-50 text-gray-700 border-b">
-                          <tr>
-                            <th className="px-4 py-3 text-left font-semibold">Judul</th>
-                            <th className="px-4 py-3 text-left font-semibold">Level</th>
-                            <th className="px-4 py-3 text-left font-semibold">Poin</th>
-                            <th className="px-4 py-3 text-left font-semibold">Status</th>
-                            <th className="px-4 py-3 text-left font-semibold">Periode</th>
-                            <th className="px-4 py-3 text-left font-semibold">Aksi</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {challenges
-                            .filter(challenge => 
-                              (challengeFilter === 'all' || challenge.difficulty === challengeFilter) &&
-                              (challenge.title.toLowerCase().includes(challengeSearch.toLowerCase()) ||
-                               challenge.description?.toLowerCase().includes(challengeSearch.toLowerCase()))
-                            )
-                            .map((challenge) => (
-                              <tr key={challenge.id} className="border-b hover:bg-gray-50 transition-colors">
-                                <td className="px-4 py-3">
-                                  <div>
-                                    <div className="font-medium text-gray-800">{challenge.title}</div>
-                                    <div className="text-sm text-gray-500">{challenge.description}</div>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span className={`px-2 py-1 text-xs rounded-full ${
-                                    challenge.difficulty === 'beginner' ? 'bg-green-100 text-green-800' :
-                                    challenge.difficulty === 'intermediate' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {challenge.difficulty === 'beginner' ? 'Pemula' :
-                                     challenge.difficulty === 'intermediate' ? 'Menengah' : 'Lanjutan'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">{challenge.points} poin</td>
-                                <td className="px-4 py-3">
-                                  <span className={`px-2 py-1 text-xs rounded-full ${
-                                    challenge.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {challenge.is_active ? 'Aktif' : 'Nonaktif'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="text-sm">
-                                    <div>{new Date(challenge.start_date).toLocaleDateString('id-ID')}</div>
-                                    <div className="text-gray-500">hingga</div>
-                                    <div>{new Date(challenge.end_date).toLocaleDateString('id-ID')}</div>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleEditChallenge(challenge)}
-                                      className="p-1.5 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200"
-                                    >
-                                      <IconEdit size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteChallenge(challenge.id)}
-                                      className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200"
-                                    >
-                                      <IconTrash size={16} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
+              <EventTahunanTab
+                events={events.filter(event => 
+                  event.type === 'Acara' || 
+                  event.type === 'Event' || 
+                  (event.type !== 'Pengumuman' && event.type !== 'Sistem')
+                )}
+                statistics={statistics}
+                typeFilter={typeFilter}
+                setTypeFilter={setTypeFilter}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                handleAddEvent={handleAddEvent}
+                handleEditEvent={handleEditEvent}
+                handleDeleteEvent={handleDeleteEvent}
+                selectedYear={selectedYear}
+                setSelectedYear={setSelectedYear}
+                isCalendarExpanded={isCalendarExpanded}
+                setIsCalendarExpanded={setIsCalendarExpanded}
+                calendarEvents={calendarEvents}
+                renderCalendarHeader={renderCalendarHeader}
+                generateCalendarGrid={generateCalendarGrid}
+                getMonthName={getMonthName}
+                filterOptions={filterOptions}
+                FilterDropdown={FilterDropdown}
+                AdminDropdown={AdminDropdown}
+              />
+            ) : activeTab === 'announcements' ? (
+              <PengumumanTab
+                events={events.filter(event => 
+                  event.type === 'Pengumuman' || 
+                  event.type === 'Sistem'
+                )}
+                statistics={statistics}
+                typeFilter={typeFilter}
+                setTypeFilter={setTypeFilter}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                handleAddEvent={handleAddEvent}
+                handleEditEvent={handleEditEvent}
+                handleDeleteEvent={handleDeleteEvent}
+                filterOptions={filterOptions}
+                FilterDropdown={FilterDropdown}
+              />
+            ) : null}
+            </div> {/* Close max-w-5xl container */}
 
             {/* Modal Tambah/Edit Event */}
             {showModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div 
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setShowModal(false);
+                  }
+                }}
+              >
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="bg-white rounded-xl p-6 w-full max-w-md"
+                  className="bg-white rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <h3 className="text-lg font-bold mb-4">{isEditing ? 'Edit Event' : 'Tambah Event Baru'}</h3>
-                  <div className="space-y-4">
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
                     <div>
                       <label className="block text-sm font-medium mb-1 text-gray-700">Judul</label>
                       <input 
@@ -1287,53 +1451,93 @@ const AdminEvent = () => {
                         name="title"
                         value={currentEvent.title}
                         onChange={handleInputChange}
-                        className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Masukkan judul event"
                       />
                     </div>
                     {renderEventTypeSelect()}
+                    
+                    {/* Speaker Information */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-gray-700">Speaker</label>
+                        <input 
+                          type="text" 
+                          name="speaker"
+                          value={currentEvent.speaker || ''}
+                          onChange={handleInputChange}
+                          className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Nama pembicara"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-gray-700">Gelar/Posisi</label>
+                        <input 
+                          type="text" 
+                          name="speaker_title"
+                          value={currentEvent.speaker_title || ''}
+                          onChange={handleInputChange}
+                          className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Dr., Prof., CEO, etc."
+                        />
+                      </div>
+                    </div>
+                    
                     <div>
                       <label className="block text-sm font-medium mb-1 text-gray-700">Deskripsi</label>
                       <textarea 
                         name="description"
                         value={currentEvent.description}
                         onChange={handleInputChange}
-                        className="w-full border rounded-lg p-2 h-24 focus:outline-none focus:ring-2 focus:ring-secondary"
+                        className="w-full border rounded-lg p-2 h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Masukkan deskripsi event"
                       ></textarea>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1 text-gray-700">Tanggal</label>
-                      <input 
-                        type="date" 
-                        name="date"
-                        value={currentEvent.date}
-                        onChange={handleInputChange}
-                        className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-secondary"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-gray-700">Tanggal</label>
+                        <input 
+                          type="date" 
+                          name="date"
+                          value={currentEvent.date}
+                          onChange={handleInputChange}
+                          className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-gray-700">Waktu</label>
+                        <input 
+                          type="time" 
+                          name="time"
+                          value={currentEvent.time || ''}
+                          onChange={handleInputChange}
+                          className="w-full border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                     {renderEventStatusSelect()}
                   </div>
-                  <div className="flex justify-end space-x-2 mt-6">
-                    <button 
-                      className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                  <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="px-5 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors font-medium"
                       onClick={() => setShowModal(false)}
                     >
                       Batal
-                    </button>
-                    <button 
-                      className="px-4 py-2 bg-secondary text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    </motion.button>
+                    <motion.button 
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md hover:shadow-lg"
                       onClick={handleSaveEvent}
                     >
-                      Simpan
-                    </button>
+                      {isEditing ? 'Perbarui' : 'Simpan'}
+                    </motion.button>
                   </div>
                 </motion.div>
               </div>
             )}
-
-            {/* Add ChallengeModal here */}
-            <ChallengeModal />
 
             <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40">
               <FloatingDock items={dockItems} />

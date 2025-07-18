@@ -1,10 +1,11 @@
-import { IconActivity, IconBell, IconCalendar, IconChartBar, IconInfoCircle, IconLanguage, IconLock, IconLogout, IconPalette, IconSettings, IconSun, IconTrophy, IconUserCircle, IconVolume } from '@tabler/icons-react';
+import { IconActivity, IconChartBar, IconInfoCircle, IconKey, IconLanguage, IconLock, IconMoon, IconPalette, IconSettings, IconShield, IconSun, IconUserCircle, IconVolume, IconVolumeOff } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
-import { FiAward } from 'react-icons/fi';
+import HeaderTeacher from '../../../components/layout/HeaderTeacher';
 import { FloatingDock } from '../../../components/ui/floating-dock';
+import { generateOTP, verifyOTP } from '../../../lib/otpUtils';
 import { supabase } from '../../../lib/supabaseClient';
 
 
@@ -13,63 +14,230 @@ const DashboardSettingsTeacher = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [activeTab, setActiveTab] = useState('appearance');
+  const [activeTab, setActiveTab] = useState('account');
   const [accentColor, setAccentColor] = useState('blue');
   const [userName, setUserName] = useState('');
   const [userPoints, setUserPoints] = useState(0);
   const [teacherProfile, setTeacherProfile] = useState(null);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+  // 2FA related states
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [showOTPInput, setShowOTPInput] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isGeneratingOTP, setIsGeneratingOTP] = useState(false);
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [otpMessage, setOtpMessage] = useState('');
+  const [otpPurpose, setOtpPurpose] = useState('enable_2fa'); // 'enable_2fa' or 'disable_2fa'
   
-  // Cek apakah user sudah login
+  // Check authentication
   useEffect(() => {
-    // Fungsi untuk memuat inventory pengguna
-    const loadUserInventory = () => {
-      try {
-        const savedInventory = localStorage.getItem('userInventory');
-        const savedPoints = localStorage.getItem('userPoints');
-        
-        if (savedInventory) {
-          setInventory(JSON.parse(savedInventory));
-        }
-        
-        if (savedPoints) {
-          setUserPoints(parseInt(savedPoints));
-        }
-      } catch (error) {
-        console.error('Error loading user inventory:', error);
-      }
-    };
+    if (hasCheckedAuth) return; // Prevent re-execution
     
-    // Check if user is logged in
-      const isLoggedIn = localStorage.getItem('isLoggedIn');
+    const checkAuth = () => {
+      console.log('=== DASHBOARD SETTINGS: Checking authentication ===');
       
-      if (!isLoggedIn || isLoggedIn !== 'true') {
-        router.push('/authentication/login');
+      const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+      const isTeacher = localStorage.getItem('isTeacher') === 'true';
+      const teacherEmail = localStorage.getItem('teacherEmail');
+      
+      console.log('Settings auth check:', { 
+        isLoggedIn, 
+        isTeacher, 
+        teacherEmail: teacherEmail || 'null'
+      });
+      
+      if (!isLoggedIn || !isTeacher || !teacherEmail) {
+        console.log('❌ Not authenticated as teacher, redirecting to login...');
+        // Add delay to prevent immediate redirect loop
+        setTimeout(() => {
+          window.location.replace('/authentication/teacher/loginTeacher');
+        }, 500);
         return;
       }
       
-      setUserName(localStorage.getItem('userName') || 'Pengguna');
+      console.log('✅ Teacher authentication verified, loading settings...');
+      setHasCheckedAuth(true);
+    };
+    
+    checkAuth();
+  }, [hasCheckedAuth]); // Only depend on hasCheckedAuth
+
+  // Add fetchTeacherProfile function with better error handling
+  const fetchTeacherProfile = async () => {
+    try {
+      const teacherId = localStorage.getItem('teacherId');
+      if (!teacherId) {
+        console.log('No teacherId in localStorage, skipping profile fetch');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('teacher_profiles')
+        .select('*')
+        .eq('id', teacherId)
+        .single();
+
+      if (error) {
+        // Handle RLS/CORS errors gracefully
+        if (error.message.includes('access control checks') || 
+            error.message.includes('CORS') ||
+            error.code === 'PGRST116') {
+          console.log('Teacher profile access denied, using localStorage data instead');
+          // Use localStorage data as fallback
+          const fallbackProfile = {
+            full_name: localStorage.getItem('teacherName') || 'Guru',
+            email: localStorage.getItem('teacherEmail') || '',
+            institution: localStorage.getItem('teacherInstitution') || 'Belum ada',
+            is_verified: true,
+            status: 'verified',
+            two_factor_enabled: false
+          };
+          setTeacherProfile(fallbackProfile);
+          setIs2FAEnabled(false);
+          return;
+        }
+        throw error;
+      }
       
-      // Load user inventory
-      loadUserInventory();
+      setTeacherProfile(data);
+      setIs2FAEnabled(data.two_factor_enabled || false);
+    } catch (error) {
+      console.error('Error fetching teacher profile:', error);
+      // Use localStorage as fallback
+      const fallbackProfile = {
+        full_name: localStorage.getItem('teacherName') || 'Guru',
+        email: localStorage.getItem('teacherEmail') || '',
+        institution: localStorage.getItem('teacherInstitution') || 'Belum ada',
+        is_verified: true,
+        status: 'verified',
+        two_factor_enabled: false
+      };
+      setTeacherProfile(fallbackProfile);
+      setIs2FAEnabled(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasCheckedAuth) return; // Wait for auth check to complete
+    
+    setUserName(localStorage.getItem('teacherName') || localStorage.getItem('userName') || 'Guru');
+    fetchTeacherProfile();
+    
+    // Cek preferensi tema dari localStorage
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    document.documentElement.classList.toggle('dark', savedDarkMode);
+    
+    // Cek preferensi suara dari localStorage
+    const savedSoundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+    setSoundEnabled(savedSoundEnabled);
+    
+    // Cek warna aksen dari localStorage
+    const savedAccentColor = localStorage.getItem('accentColor') || 'blue';
+    setAccentColor(savedAccentColor);
+    
+    // Simulasi loading
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 300);
+  }, [hasCheckedAuth]); // Depend on auth check completion
+
+  // 2FA Functions with Supabase OTP
+  const generateOTPCode = async (purpose = 'enable_2fa') => {
+    // Get user_id from Supabase auth or localStorage
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || localStorage.getItem('teacherUserId');
+    
+    if (!userId) {
+      alert('User ID tidak ditemukan. Silakan login ulang.');
+      return;
+    }
+
+    setIsGeneratingOTP(true);
+    setOtpMessage('');
+    setOtpPurpose(purpose);
+
+    try {
+      const result = await generateOTP(userId, purpose);
       
-      // Cek preferensi tema dari localStorage
-      const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-      setDarkMode(savedDarkMode);
-      document.documentElement.classList.toggle('dark', savedDarkMode);
+      if (result.success) {
+        setShowOTPInput(true);
+        if (result.email_sent) {
+          setOtpMessage(`OTP telah dikirim ke email ${result.masked_email}. Periksa kotak masuk Anda.`);
+        } else {
+          // Fallback if email failed
+          setOtpMessage(`OTP: ${result.otp_code || 'Gagal mengirim email, silakan coba lagi.'}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error generating OTP:', error);
+      alert('Gagal mengirim OTP. Silakan coba lagi.');
+    } finally {
+      setIsGeneratingOTP(false);
+    }
+  };
+
+  const verifyOTPCode = async () => {
+    if (!otpCode || otpCode.length !== 4) {
+      alert('Masukkan kode OTP 4 digit yang valid.');
+      return;
+    }
+
+    // Get user_id from Supabase auth or localStorage
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || localStorage.getItem('teacherUserId');
+    
+    if (!userId) {
+      alert('User ID tidak ditemukan. Silakan login ulang.');
+      return;
+    }
+
+    setIsVerifyingOTP(true);
+
+    try {
+      const action = otpPurpose === 'enable_2fa' ? 'enable' : 'disable';
+      const result = await verifyOTP(userId, otpCode, action);
       
-      // Cek preferensi suara dari localStorage
-      const savedSoundEnabled = localStorage.getItem('soundEnabled') !== 'false';
-      setSoundEnabled(savedSoundEnabled);
-      
-      // Cek warna aksen dari localStorage
-      const savedAccentColor = localStorage.getItem('accentColor') || 'blue';
-      setAccentColor(savedAccentColor);
-      
-      // Simulasi loading
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 300);
-    }, [router]);
+      if (result.success) {
+        if (action === 'enable') {
+          setIs2FAEnabled(true);
+          alert('2FA berhasil diaktifkan! Akun Anda sekarang lebih aman.');
+        } else {
+          setIs2FAEnabled(false);
+          alert('2FA berhasil dinonaktifkan.');
+        }
+        
+        setShowOTPInput(false);
+        setOtpCode('');
+        setOtpMessage('');
+        fetchTeacherProfile(); // Refresh profile
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error);
+      alert(error.message || 'Kode OTP tidak valid atau sudah kedaluwarsa.');
+    } finally {
+      setIsVerifyingOTP(false);
+    }
+  };
+
+  const handle2FAToggle = async () => {
+    if (is2FAEnabled) {
+      // Generate OTP for disabling 2FA
+      if (confirm('Apakah Anda yakin ingin menonaktifkan 2FA? Ini akan mengurangi keamanan akun Anda.')) {
+        await generateOTPCode('disable_2fa');
+      }
+    } else {
+      // Generate OTP for enabling 2FA
+      await generateOTPCode('enable_2fa');
+    }
+  };
+
+  const cancelOTPProcess = () => {
+    setShowOTPInput(false);
+    setOtpCode('');
+    setOtpMessage('');
+  };
+
     
     const handleLogout = () => {
       localStorage.removeItem('isLoggedIn');
@@ -132,25 +300,6 @@ const DashboardSettingsTeacher = () => {
         // Cleanup
       };
     }, [router]);
-
-    // Add fetchTeacherProfile function
-    const fetchTeacherProfile = async () => {
-      try {
-        const teacherId = localStorage.getItem('teacherId');
-        if (!teacherId) return;
-
-        const { data, error } = await supabase
-          .from('teacher_profiles')
-          .select('*')
-          .eq('id', teacherId)
-          .single();
-
-        if (error) throw error;
-        setTeacherProfile(data);
-      } catch (error) {
-        console.error('Error fetching teacher profile:', error);
-      }
-    };
 
     // Modify useEffect to include fetchTeacherProfile
     useEffect(() => {
@@ -310,8 +459,8 @@ const DashboardSettingsTeacher = () => {
     return (
       <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} transition-colors duration-300`}>
         <Head>
-          <title>Pengaturan | Belajar Makhraj</title>
-          <meta name="description" content="Pengaturan aplikasi Belajar Makhraj" />
+          <title>Pengaturan Akun Guru | Belajar Makhraj</title>
+          <meta name="description" content="Pengaturan akun guru dengan 2FA dan keamanan tambahan" />
         </Head>
 
         {isLoading ? (
@@ -321,49 +470,7 @@ const DashboardSettingsTeacher = () => {
         ) : (
           <>
             {/* Header */}
-            <header className="bg-white shadow-sm sticky top-0 z-40">
-              <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-secondary rounded-full flex items-center justify-center text-white">
-                    {userName.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                      {userName}
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Administrator</span>
-                    </h2>
-                    <div className="flex items-center text-xs text-gray-500 gap-3">
-                      <span>{teacherProfile?.is_verified ? 'Terverifikasi • ' : ''}{teacherProfile?.status || 'Pending'}</span>
-                      <span className="flex items-center gap-1 text-purple-600">
-                        <IconCalendar size={12} />
-                        <span>{teacherProfile?.teaching_experience || 'Belum ada'}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-yellow-600">
-                        <IconTrophy size={12} />
-                        <span>{teacherProfile?.specialization || 'Belum ada'}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-green-600">
-                        <FiAward size={12} />
-                        <span>{teacherProfile?.institution || 'Belum ada'}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <button className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
-                    <IconBell size={20} className="text-gray-600" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                  </button>
-                  <button 
-                    onClick={handleLogout}
-                    className="text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                  >
-                    <IconLogout size={16} />
-                    <span className="hidden md:inline">Keluar</span>
-                  </button>
-                </div>
-              </div>
-            </header>
+            <HeaderTeacher />
 
             <div className="container mx-auto px-4 py-8 max-w-7xl">
               <motion.div 
@@ -372,7 +479,7 @@ const DashboardSettingsTeacher = () => {
                 transition={{ duration: 0.5 }}
                 className="flex items-center justify-between mb-8"
               >
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-600">Pengaturan</h1>
+                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-purple-600">Pengaturan Akun Guru</h1>
                 <div className="flex items-center space-x-4">
                   <div className={`px-4 py-2 rounded-full ${darkMode ? 'bg-gray-800' : 'bg-white shadow-md'}`}>
                     <span className="font-medium">Halo, {userName}</span>
@@ -561,6 +668,112 @@ const DashboardSettingsTeacher = () => {
                               </button>
                             </div>
                           </div>
+
+                          <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-6 rounded-xl`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4">
+                                <IconShield size={24} className={`text-${accentColor}-500`} />
+                                <div>
+                                  <h3 className="font-semibold text-lg">Verifikasi Dua Faktor (2FA)</h3>
+                                  <p className="text-sm opacity-70">Tingkatkan keamanan akun dengan OTP 4 digit</p>
+                                </div>
+                              </div>
+                              <button 
+                                onClick={handle2FAToggle}
+                                disabled={isGeneratingOTP}
+                                className={`w-14 h-7 flex items-center rounded-full p-1 transition-all ${is2FAEnabled ? `bg-${accentColor}-500` : 'bg-gray-300'} ${isGeneratingOTP ? 'opacity-50' : ''}`}
+                              >
+                                <motion.div 
+                                  className="bg-white w-5 h-5 rounded-full shadow-md"
+                                  animate={{ x: is2FAEnabled ? 28 : 0 }}
+                                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                />
+                              </button>
+                            </div>
+                            
+                            {/* Status indicator */}
+                            <div className="mt-4">
+                              <div className={`flex items-center space-x-3 p-3 rounded-lg ${
+                                is2FAEnabled 
+                                  ? 'bg-green-100 dark:bg-green-900/30' 
+                                  : 'bg-yellow-100 dark:bg-yellow-900/30'
+                              }`}>
+                                <IconShield size={16} className={is2FAEnabled ? 'text-green-500' : 'text-yellow-500'} />
+                                <span className={`text-xs font-medium ${
+                                  is2FAEnabled 
+                                    ? 'text-green-700 dark:text-green-300' 
+                                    : 'text-yellow-700 dark:text-yellow-300'
+                                }`}>
+                                  {is2FAEnabled 
+                                    ? '2FA aktif - Akun Anda dilindungi dengan OTP' 
+                                    : '2FA tidak aktif - Aktifkan untuk keamanan tambahan'
+                                  }
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* OTP Input Modal */}
+                            {showOTPInput && (
+                              <div className="mt-4 p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                                <h4 className="font-medium mb-3">
+                                  {otpPurpose === 'enable_2fa' ? 'Aktifkan 2FA' : 'Nonaktifkan 2FA'}
+                                </h4>
+                                
+                                {otpMessage && (
+                                  <div className="mb-4 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <p className="text-sm text-blue-700 dark:text-blue-300">{otpMessage}</p>
+                                  </div>
+                                )}
+                                
+                                <div className="space-y-4">
+                                  <div>
+                                    <label className="block text-sm font-medium mb-2">
+                                      Masukkan kode OTP 4 digit:
+                                    </label>
+                                    <div className="flex space-x-2">
+                                      <input
+                                        type="text"
+                                        value={otpCode}
+                                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                        placeholder="1234"
+                                        maxLength="4"
+                                        className={`flex-1 px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'} border text-center font-mono text-lg`}
+                                      />
+                                      <button
+                                        onClick={verifyOTPCode}
+                                        disabled={isVerifyingOTP || otpCode.length !== 4}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                          isVerifyingOTP || otpCode.length !== 4
+                                            ? 'bg-gray-400 cursor-not-allowed'
+                                            : `bg-${accentColor}-500 hover:bg-${accentColor}-600`
+                                        } text-white`}
+                                      >
+                                        {isVerifyingOTP ? 'Verifikasi...' : 'Verifikasi'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={() => generateOTPCode(otpPurpose)}
+                                      disabled={isGeneratingOTP}
+                                      className="text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 text-sm disabled:opacity-50"
+                                    >
+                                      {isGeneratingOTP ? 'Mengirim...' : 'Kirim Ulang OTP'}
+                                    </button>
+                                    <span className="text-gray-300">|</span>
+                                    <button
+                                      onClick={cancelOTPProcess}
+                                      className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
+                                    >
+                                      Batal
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
                         </div>
                       </motion.div>
                     )}
@@ -575,6 +788,117 @@ const DashboardSettingsTeacher = () => {
                       >
                         <h2 className="text-2xl font-bold mb-6">Pengaturan Keamanan</h2>
                         <div className="space-y-6">
+                          {/* 2FA Section */}
+                          <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-6 rounded-xl`}>
+                            <div className="flex items-center space-x-3 mb-4">
+                              <IconShield size={24} className={`text-${accentColor}-500`} />
+                              <h3 className="font-semibold text-lg">Verifikasi Dua Faktor (2FA)</h3>
+                            </div>
+                            
+                            {is2FAEnabled ? (
+                              <div className="space-y-4">
+                                <div className="flex items-center space-x-3 p-4 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                  <IconShield size={20} className="text-green-500" />
+                                  <span className="text-green-700 dark:text-green-300 font-medium">
+                                    2FA telah diaktifkan untuk akun Anda. Akun Anda lebih aman sekarang!
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Dengan 2FA aktif, Anda akan diminta memasukkan kode verifikasi dari aplikasi authenticator setiap kali login.
+                                </p>
+                                <button
+                                  onClick={() => generateOTPCode('disable_2fa')}
+                                  className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors font-medium"
+                                >
+                                  Nonaktifkan 2FA
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="space-y-4">
+                                <div className="flex items-center space-x-3 p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
+                                  <IconKey size={20} className="text-yellow-500" />
+                                  <span className="text-yellow-700 dark:text-yellow-300 font-medium">
+                                    2FA belum diaktifkan. Tingkatkan keamanan akun Anda!
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  Verifikasi Dua Faktor menambah lapisan keamanan ekstra ke akun Anda. 
+                                  Bahkan jika kata sandi Anda dikompromikan, akun Anda tetap aman.
+                                </p>
+                                
+                                {!showOTPInput ? (
+                                  <button
+                                    onClick={() => generateOTPCode('enable_2fa')}
+                                    disabled={isGeneratingOTP}
+                                    className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-colors ${
+                                      isGeneratingOTP 
+                                        ? 'bg-gray-400 cursor-not-allowed' 
+                                        : `bg-${accentColor}-500 hover:bg-${accentColor}-600`
+                                    } text-white`}
+                                  >
+                                    <IconShield size={18} />
+                                    <span>{isGeneratingOTP ? 'Mengirim OTP...' : 'Aktifkan 2FA'}</span>
+                                  </button>
+                                ) : (
+                                  <div className="space-y-4">
+                                    <div className="p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                                      <h4 className="font-medium mb-3">Verifikasi OTP</h4>
+                                      
+                                      {otpMessage && (
+                                        <div className="mb-4 p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                          <p className="text-sm text-blue-700 dark:text-blue-300">{otpMessage}</p>
+                                        </div>
+                                      )}
+                                      
+                                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                        Masukkan 4 digit kode OTP yang telah dikirim:
+                                      </p>
+                                      <div className="flex space-x-2">
+                                        <input
+                                          type="text"
+                                          value={otpCode}
+                                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                                          placeholder="1234"
+                                          maxLength="4"
+                                          className={`flex-1 px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'} border text-center font-mono text-lg`}
+                                        />
+                                        <button
+                                          onClick={verifyOTPCode}
+                                          disabled={isVerifyingOTP || otpCode.length !== 4}
+                                          className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                                            isVerifyingOTP || otpCode.length !== 4
+                                              ? 'bg-gray-400 cursor-not-allowed'
+                                              : `bg-${accentColor}-500 hover:bg-${accentColor}-600`
+                                          } text-white`}
+                                        >
+                                          {isVerifyingOTP ? 'Memverifikasi...' : 'Verifikasi'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex space-x-2">
+                                      <button
+                                        onClick={() => generateOTPCode('enable_2fa')}
+                                        disabled={isGeneratingOTP}
+                                        className="text-blue-500 hover:text-blue-700 dark:hover:text-blue-300 text-sm disabled:opacity-50"
+                                      >
+                                        {isGeneratingOTP ? 'Mengirim...' : 'Kirim Ulang OTP'}
+                                      </button>
+                                      <span className="text-gray-300">|</span>
+                                      <button
+                                        onClick={cancelOTPProcess}
+                                        className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
+                                      >
+                                        Batal
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Change Password Section */}
                           <div className={`${darkMode ? 'bg-gray-700' : 'bg-gray-100'} p-6 rounded-xl`}>
                             <h3 className="font-semibold text-lg mb-4">Ubah Kata Sandi</h3>
                             <div className="space-y-4">
@@ -583,7 +907,7 @@ const DashboardSettingsTeacher = () => {
                                 <input 
                                   type="password" 
                                   placeholder="••••••••"
-                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
+                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'} border`}
                                 />
                               </div>
                               <div>
@@ -591,7 +915,7 @@ const DashboardSettingsTeacher = () => {
                                 <input 
                                   type="password" 
                                   placeholder="••••••••"
-                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
+                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'} border`}
                                 />
                               </div>
                               <div>
@@ -599,7 +923,7 @@ const DashboardSettingsTeacher = () => {
                                 <input 
                                   type="password" 
                                   placeholder="••••••••"
-                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'}`}
+                                  className={`w-full px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-300'} border`}
                                 />
                               </div>
                               <button className={`px-4 py-2 rounded-lg bg-${accentColor}-500 text-white hover:bg-${accentColor}-600 transition-colors`}>

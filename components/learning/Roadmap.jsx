@@ -1,9 +1,90 @@
-import { IconArrowRight, IconAward, IconBook, IconClock, IconCoin, IconFlame, IconShield, IconSparkles, IconStar } from '@tabler/icons-react';
+import { IconArrowRight, IconAward, IconBook, IconClock, IconCoin, IconFlame, IconShield, IconStar } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Lock, Play, Star, Target, TrendingUp } from 'lucide-react';
 
-const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLesson }) => {
+const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLesson, userProfile, onEnergyUpdate }) => {
   
+  // Check if user has enough energy for a sub lesson
+  const checkEnergyRequirement = (requiredEnergy = 2) => {
+    return (userProfile?.energy || 0) >= requiredEnergy;
+  };
+
+  // Handle sub lesson start with energy deduction
+  const handleSubLessonStart = async (levelId, subLessonId, requiredEnergy = 2) => {
+    if (!checkEnergyRequirement(requiredEnergy)) {
+      alert(`Anda membutuhkan ${requiredEnergy} energi untuk memulai pelajaran ini. Energi saat ini: ${userProfile?.energy || 0}`);
+      return;
+    }
+
+    try {
+      // Update energy in database
+      const response = await fetch('/api/update-energy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId: userProfile?.id,
+          energyToDeduct: requiredEnergy,
+          operation: 'deduct'
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const newEnergy = result.updatedProfile.energy;
+        
+        // Update local energy state
+        if (onEnergyUpdate) {
+          onEnergyUpdate(newEnergy);
+        }
+        
+        // Dispatch energy update event
+        window.dispatchEvent(new CustomEvent('energyUpdated', {
+          detail: { newEnergy }
+        }));
+        
+        // Start the lesson
+        handleStartLesson(levelId, subLessonId);
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to update energy');
+      }
+    } catch (error) {
+      console.error('Error deducting energy:', error);
+      alert('Terjadi kesalahan saat memulai pelajaran. Silakan coba lagi.');
+    }
+  };
+
+  // Get sub lesson score from completed data
+  const getSubLessonScore = (subLesson) => {
+    if (subLesson.status === 'completed' && subLesson.score) {
+      return {
+        correct: subLesson.score.correct || 0,
+        total: subLesson.score.total || 0,
+        percentage: subLesson.score.percentage || 0
+      };
+    }
+    return null;
+  };
+
+  // Enhanced function to get roadmap progress from user_roadmap_progress
+  const getRoadmapProgress = (item) => {
+    if (item.user_roadmap_progress && item.user_roadmap_progress.length > 0) {
+      const progress = item.user_roadmap_progress[0];
+      return {
+        progress: progress.progress || 0,
+        status: progress.status || 'locked',
+        completedSubLessons: progress.sub_lessons_completed || [],
+        completedAt: progress.completed_at
+      };
+    }
+    return {
+      progress: 0,
+      status: 'locked',
+      completedSubLessons: [],
+      completedAt: null
+    };
+  };
+
   // Enhanced color system with modern gradients
   const getColorClasses = (color, status) => {
     if (status === 'locked') {
@@ -67,7 +148,7 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
   // Enhanced status icon with animations
   const getStatusIcon = (status, progress) => {
     if (status === 'locked') return <Lock size={20} className="animate-pulse" />;
-    if (progress === 100) return <Check size={20} className="animate-bounce" />;
+    if (progress === 100 || status === 'completed') return <Check size={20} className="animate-bounce" />;
     if (progress > 0) return <Play size={20} className="animate-pulse" />;
     return <Target size={20} />;
   };
@@ -75,12 +156,18 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
   // Calculate overall progress
   const calculateOverallProgress = () => {
     if (!roadmapData || roadmapData.length === 0) return 0;
-    const totalProgress = roadmapData.reduce((sum, item) => sum + (item.progress || 0), 0);
+    const totalProgress = roadmapData.reduce((sum, item) => {
+      const roadmapProgress = getRoadmapProgress(item);
+      return sum + (roadmapProgress.progress || 0);
+    }, 0);
     return Math.round(totalProgress / roadmapData.length);
   };
 
   const overallProgress = calculateOverallProgress();
-  const completedLevels = roadmapData?.filter(item => item.progress === 100).length || 0;
+  const completedLevels = roadmapData?.filter(item => {
+    const roadmapProgress = getRoadmapProgress(item);
+    return roadmapProgress.progress === 100 || roadmapProgress.status === 'completed';
+  }).length || 0;
 
   return (
     <div className="bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 min-h-screen font-inter antialiased">
@@ -189,10 +276,25 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
         <div className="absolute left-8 top-16 bottom-16 w-1 bg-gradient-to-b from-blue-200 via-purple-200 to-emerald-200 rounded-full opacity-60"></div>
         
         {roadmapData?.map((item, index) => {
-          const colorClasses = getColorClasses(item.color, item.status);
-          const isActive = item.status === 'active';
-          const isCompleted = item.progress === 100;
-          const isLocked = item.status === 'locked';
+          const roadmapProgress = getRoadmapProgress(item);
+          const colorClasses = getColorClasses(item.color, roadmapProgress.status);
+          const isActive = roadmapProgress.status === 'active' || roadmapProgress.status === 'in_progress';
+          const isCompleted = roadmapProgress.progress === 100 || roadmapProgress.status === 'completed';
+          
+          // Enhanced logic to determine if level should be locked
+          let isLocked = false;
+          if (index === 0) {
+            // First level is never locked
+            isLocked = false;
+          } else {
+            // Check if previous level is completed
+            const previousItem = roadmapData[index - 1];
+            const previousProgress = getRoadmapProgress(previousItem);
+            const isPreviousCompleted = previousProgress.progress === 100 || previousProgress.status === 'completed';
+            
+            // Level is locked if previous level is not completed AND current level status is locked
+            isLocked = !isPreviousCompleted && roadmapProgress.status === 'locked';
+          }
           
           return (
             <motion.div
@@ -243,7 +345,7 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
                       animate={isActive ? { rotate: [0, 10, -10, 0] } : {}}
                       transition={{ duration: 2, repeat: Infinity }}
                     >
-                      {getStatusIcon(item.status, item.progress)}
+                      {getStatusIcon(roadmapProgress.status, roadmapProgress.progress)}
                     </motion.div>
                     
                     {/* Shine effect for completed items */}
@@ -309,7 +411,7 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
                       </span>
                       <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${colorClasses.badge}`}>
                         <IconBook size={12} className="inline mr-1" />
-                        {item.completedLessons}/{item.lessons} Pelajaran
+                        {roadmapProgress.completedSubLessons.length}/{item.lessons_total || item.sub_lessons?.length || 0} Pelajaran
                       </span>
                       <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${colorClasses.badge}`}>
                         <IconCoin size={12} className="inline mr-1" />
@@ -322,13 +424,13 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
                           <span className={`text-sm font-medium ${colorClasses.text}`}>Progress Pembelajaran</span>
-                          <span className={`text-sm font-bold ${colorClasses.text}`}>{item.progress}%</span>
+                          <span className={`text-sm font-bold ${colorClasses.text}`}>{roadmapProgress.progress}%</span>
                         </div>
                         
                         <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
                           <motion.div
                             initial={{ width: 0 }}
-                            animate={{ width: `${item.progress}%` }}
+                            animate={{ width: `${roadmapProgress.progress}%` }}
                             transition={{ duration: 1, delay: 0.5 + index * 0.1, ease: "easeOut" }}
                             className={`h-full bg-gradient-to-r ${colorClasses.progress} rounded-full shadow-sm relative`}
                           >
@@ -339,8 +441,8 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
                         {/* Progress milestones */}
                         <div className="flex justify-between text-xs text-gray-500">
                           <span>Mulai</span>
-                          <span className={item.progress >= 50 ? colorClasses.text : 'text-gray-400'}>50%</span>
-                          <span className={item.progress === 100 ? colorClasses.text : 'text-gray-400'}>Selesai</span>
+                          <span className={roadmapProgress.progress >= 50 ? colorClasses.text : 'text-gray-400'}>50%</span>
+                          <span className={roadmapProgress.progress === 100 ? colorClasses.text : 'text-gray-400'}>Selesai</span>
                         </div>
                       </div>
                     )}
@@ -370,43 +472,129 @@ const Roadmap = ({ roadmapData, expandedLevel, setExpandedLevel, handleStartLess
                               transition={{ duration: 0.3 }}
                               className="border-t border-gray-200 pt-4 space-y-3"
                             >
-                              {item.sub_lessons.map((subLesson, subIndex) => (
-                                <motion.div
-                                  key={subLesson.id}
-                                  initial={{ opacity: 0, x: -20 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                  transition={{ delay: subIndex * 0.1 }}
-                                  className={`flex items-center gap-4 p-4 rounded-xl bg-white/70 hover:bg-white transition-all duration-200 ${
-                                    subLesson.status === 'locked' ? 'opacity-60' : 'hover:shadow-md'
-                                  }`}
-                                >
-                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                                    subLesson.status === 'completed' ? 'bg-green-500 text-white shadow-md' :
-                                    subLesson.status === 'active' ? 'bg-blue-500 text-white shadow-md animate-pulse' :
-                                    'bg-gray-200 text-gray-500'
-                                  }`}>
-                                    {subLesson.status === 'completed' ? <Check size={16} /> : subIndex + 1}
-                                  </div>
-                                  
-                                  <div className="flex-1 min-w-0">
-                                    <h4 className="font-semibold text-gray-900 truncate">{subLesson.title}</h4>
-                                    <p className="text-sm text-gray-600 mt-1">{subLesson.description}</p>
-                                  </div>
-                                  
-                                  {subLesson.status === 'active' && (
-                                    <motion.button 
-                                      whileHover={{ scale: 1.05 }}
-                                      whileTap={{ scale: 0.95 }}
-                                      className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
-                                      onClick={() => handleStartLesson(item.id, subLesson.id)}
-                                    >
-                                      <IconSparkles size={14} />
-                                      Mulai Belajar
-                                      <IconArrowRight size={14} />
-                                    </motion.button>
-                                  )}
-                                </motion.div>
-                              ))}
+                              {item.sub_lessons.map((subLesson, subIndex) => {
+                                const subLessonScore = getSubLessonScore(subLesson);
+                                const requiredEnergy = 2; // Energy requirement per sub lesson
+                                const hasEnoughEnergy = checkEnergyRequirement(requiredEnergy);
+                                
+                                // Use roadmap progress data to determine actual completion status
+                                const isSubLessonCompleted = roadmapProgress.completedSubLessons.includes(subLesson.id) || subLesson.status === 'completed';
+                                
+                                // Determine if sub-lesson should be active
+                                let isSubLessonActive = false;
+                                if (!isSubLessonCompleted) {
+                                  if (subIndex === 0) {
+                                    // First sub-lesson is active if roadmap is not locked
+                                    isSubLessonActive = !isLocked;
+                                  } else {
+                                    // Check if previous sub-lesson is completed
+                                    const previousSubLesson = item.sub_lessons[subIndex - 1];
+                                    const isPreviousCompleted = roadmapProgress.completedSubLessons.includes(previousSubLesson.id);
+                                    isSubLessonActive = isPreviousCompleted;
+                                  }
+                                }
+
+                                return (
+                                  <motion.div
+                                    key={subLesson.id}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: subIndex * 0.1 }}
+                                    className={`flex items-center gap-4 p-4 rounded-xl transition-all duration-200 border ${
+                                      !isSubLessonActive && !isSubLessonCompleted ? 'opacity-60 bg-gray-50 border-gray-200' : 
+                                      isSubLessonCompleted ? 'bg-green-50/70 border-green-200 hover:bg-green-50' :
+                                      'bg-white/70 hover:bg-white border-gray-200 hover:border-blue-200 hover:shadow-md'
+                                    }`}
+                                  >
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                                      isSubLessonCompleted ? 'bg-green-500 text-white shadow-md' :
+                                      isSubLessonActive ? 'bg-blue-500 text-white shadow-md animate-pulse' :
+                                      'bg-gray-200 text-gray-500'
+                                    }`}>
+                                      {isSubLessonCompleted ? <Check size={16} /> : subIndex + 1}
+                                    </div>
+                                    
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h4 className="font-semibold text-gray-900 truncate">{subLesson.title}</h4>
+                                        
+                                        {/* Energy Requirement Badge */}
+                                        {!isSubLessonCompleted && (
+                                          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                            hasEnoughEnergy ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                          }`}>
+                                            <IconFlame size={12} />
+                                            {requiredEnergy} Energi
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      <p className="text-sm text-gray-600 mb-2">{subLesson.description}</p>
+                                      
+                                      {/* Score Display for Completed Lessons */}
+                                      {subLessonScore && isSubLessonCompleted && (
+                                        <div className="flex items-center gap-3 text-xs mt-2">
+                                          <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                            <Check size={10} />
+                                            Benar: {subLessonScore.correct}
+                                          </div>
+                                          <div className="flex items-center gap-1 bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                                            <span>✗</span>
+                                            Salah: {subLessonScore.total - subLessonScore.correct}
+                                          </div>
+                                          <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                                            <IconStar size={10} />
+                                            Skor: {subLessonScore.percentage}%
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Action Button */}
+                                    {isSubLessonCompleted ? (
+                                      <div className="flex flex-col items-end gap-1">
+                                        <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                                          <Check size={16} />
+                                          Selesai
+                                        </div>
+                                        {subLessonScore && (
+                                          <div className="text-xs text-gray-500">
+                                            {subLessonScore.percentage}% benar
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : isSubLessonActive ? (
+                                      hasEnoughEnergy ? (
+                                        <motion.button 
+                                          whileHover={{ scale: 1.05 }}
+                                          whileTap={{ scale: 0.95 }}
+                                          onClick={() => handleSubLessonStart(item.id, subLesson.id, requiredEnergy)}
+                                          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl text-sm font-medium flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200"
+                                        >
+                                          <Play size={14} />
+                                          Mulai
+                                          <IconArrowRight size={14} />
+                                        </motion.button>
+                                      ) : (
+                                        <div className="flex flex-col items-end gap-1">
+                                          <div className="px-3 py-2 bg-red-100 text-red-600 rounded-xl text-sm font-medium flex items-center gap-2">
+                                            <IconFlame size={14} />
+                                            Energi Kurang
+                                          </div>
+                                          <div className="text-xs text-gray-500">
+                                            Butuh {requiredEnergy} energi
+                                          </div>
+                                        </div>
+                                      )
+                                    ) : (
+                                      <div className="px-4 py-2 bg-gray-100 text-gray-400 rounded-xl text-sm font-medium flex items-center gap-2">
+                                        <Lock size={14} />
+                                        Terkunci
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                );
+                              })}
                             </motion.div>
                           )}
                         </AnimatePresence>

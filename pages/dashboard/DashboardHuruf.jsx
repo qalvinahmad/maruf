@@ -1,10 +1,11 @@
-import { IconBook, IconCalendar, IconCheck, IconChevronRight, IconClock, IconCoin, IconEar, IconFilter, IconFlame, IconHeart, IconHome, IconLetterA, IconMicrophone, IconSearch, IconSettings, IconStar, IconVolume, IconX } from '@tabler/icons-react';
+import { IconCalendar, IconCheck, IconChevronRight, IconClock, IconEar, IconFilter, IconFlame, IconHeart, IconLetterA, IconMicrophone, IconSearch, IconStar, IconVolume, IconX } from '@tabler/icons-react';
 import { AnimatePresence, motion, useInView } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import Header from '../../components/Header';
-import { FloatingDock } from '../../components/ui/floating-dock';
+import { Dock } from '../../components/ui/dock';
+import { Toast, showToast } from '../../components/ui/toast';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -33,14 +34,15 @@ export default function DashboardHuruf() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [completedLetters, setCompletedLetters] = useState(new Set([1, 2, 3, 8, 12, 15, 20])); // Example pre-completed letters
-  const [favoriteLetters, setFavoriteLetters] = useState(new Set([2, 5, 10, 18])); // Example favorite letters
+  const [completedLetters, setCompletedLetters] = useState(new Set()); // Remove hardcoded data
+  const [favoriteLetters, setFavoriteLetters] = useState(new Set());
   const [featuredLetters, setFeaturedLetters] = useState(new Set([1, 8, 24])); // Featured letters list
-  const [currentFeaturedIndex, setCurrentFeaturedIndex] = useState(0); // For cycling through featured letters
-  const [selectedLetter, setSelectedLetter] = useState(null); // For dialog
+  const [currentFeaturedIndex, setCurrentFeaturedIndex] = useState(0);
+  const [selectedLetter, setSelectedLetter] = useState(null);
   const [showLetterDialog, setShowLetterDialog] = useState(false);
-  const [showFeaturedDialog, setShowFeaturedDialog] = useState(false); // For featured letters dialog
+  const [showFeaturedDialog, setShowFeaturedDialog] = useState(false);
   const [isPlaying, setIsPlaying] = useState(null);
+  const [hijaiyahProgressData, setHijaiyahProgressData] = useState([]); // Add state for progress data
   
   // References for scroll animations
   const heroRef = useRef(null);
@@ -266,7 +268,7 @@ export default function DashboardHuruf() {
       difficulty: 'advanced',
       category: 'throat',
       description: 'Huruf tenggorokan tanpa titik',
-      makhraj: 'Tengah tenggorokan',
+      makhraj: 'Tengah tenggorakan',
       color: 'bg-emerald-600',
       progress: 30
     },
@@ -395,28 +397,33 @@ export default function DashboardHuruf() {
  const dockItems = [
     { 
       title: "Dashboard", 
-      icon: <IconHome />, 
-      onClick: () => router.push('/dashboard/home/Dashboard')
+      icon: <img src="/icon/icons8-home-100.png" alt="Home" className="w-6 h-6" />, 
+      href: '/dashboard/home/Dashboard'
     },
     { 
       title: "Huruf", 
-      icon: <IconLetterA />, 
-      onClick: () => router.push('/dashboard/DashboardHuruf')
+      icon: <img src="/icon/icons8-scroll-100.png" alt="Huruf" className="w-6 h-6" />, 
+      href: '/dashboard/DashboardHuruf'
+    },
+    { 
+      title: "Tes", 
+      icon: <img src="/icon/icons8-test-100.png" alt="Tes" className="w-6 h-6" />, 
+      href: '/latihan/comprehensive-test'
     },
     { 
       title: "Belajar & Roadmap", 
-      icon: <IconBook />, 
-      onClick: () => router.push('/dashboard/DashboardBelajar')
+      icon: <img src="/icon/icons8-course-assign-100.png" alt="Belajar" className="w-6 h-6" />, 
+      href: '/dashboard/DashboardBelajar'
     },
     {
       title: "Toko",
-      icon: <IconCoin />,
-      onClick: () => router.push('/dashboard/toko/DashboardShop')
+      icon: <img src="/icon/icons8-shopping-cart-100.png" alt="Toko" className="w-6 h-6" />,
+      href: '/dashboard/toko/DashboardShop'
     },
     { 
       title: "Pengaturan", 
-      icon: <IconSettings />, 
-      onClick: () => router.push('/dashboard/setting/DashboardSettings')
+      icon: <img src="/icon/setting.png" alt="Pengaturan" className="w-6 h-6" />, 
+      href: '/dashboard/setting/DashboardSettings'
     },
   ];
 
@@ -446,34 +453,43 @@ export default function DashboardHuruf() {
             setProfileData(profile);
             setUserName(profile.full_name || user.email);
             
-            // Fetch user progress for letters
-            const { data: progress } = await supabase
-              .from('letter_progress')
-              .select('letter_id, completed')
+            // Fetch hijaiyah progress from the correct table
+            const { data: hijaiyahProgress, error: progressError } = await supabase
+              .from('hijaiyah_progress')
+              .select('*')
               .eq('user_id', user.id);
               
-            if (progress) {
-              // Update completed letters
+            if (progressError) {
+              console.error('Error fetching hijaiyah progress:', progressError);
+              // Don't show toast for optional data - just log
+            } else if (hijaiyahProgress) {
+              setHijaiyahProgressData(hijaiyahProgress);
+              
+              // Update completed letters from hijaiyah_progress table
               const completedIds = new Set(
-                progress
-                  .filter(item => item.completed)
+                hijaiyahProgress
+                  .filter(item => item.is_completed)
                   .map(item => item.letter_id)
               );
               setCompletedLetters(completedIds);
             }
             
             // Fetch favorite letters
-            const { data: favorites } = await supabase
+            const { data: favorites, error: favError } = await supabase
               .from('favorite_letters')
               .select('letter_id')
               .eq('user_id', user.id);
               
-            if (favorites) {
+            if (favError) {
+              console.error('Error fetching favorites:', favError);
+              // Don't show toast for optional data - just log
+            } else if (favorites) {
               setFavoriteLetters(new Set(favorites.map(fav => fav.letter_id)));
             }
           }
         } catch (err) {
           console.error('Error fetching data:', err);
+          showToast.error('Terjadi kesalahan saat memuat data');
         } finally {
           // Simulated loading for better UX
           setTimeout(() => {
@@ -548,6 +564,8 @@ export default function DashboardHuruf() {
   const toggleFeatured = (event, letterId) => {
     event.stopPropagation();
     
+    const isFeatured = featuredLetters.has(letterId);
+    
     setFeaturedLetters(prev => {
       const newFeatured = new Set(prev);
       if (newFeatured.has(letterId)) {
@@ -558,32 +576,242 @@ export default function DashboardHuruf() {
       return newFeatured;
     });
     
+    // Show toast feedback
+    const letterName = hijaiyahLetters.find(l => l.id === letterId)?.latin || 'Huruf';
+    if (isFeatured) {
+      showToast.success(`${letterName} dihapus dari huruf pilihan`);
+    } else {
+      showToast.success(`${letterName} ditambah ke huruf pilihan!`);
+    }
+    
     // Provide haptic feedback if available
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
   };
 
-  // Toggle favorite with visual feedback
-  const toggleFavorite = (event, letterId) => {
+  // Toggle favorite letter with database update
+  const toggleFavorite = async (event, letterId) => {
     event.stopPropagation();
     
+    const isFavorite = !favoriteLetters.has(letterId);
+    
+    // Update local state first for immediate feedback
     setFavoriteLetters(prev => {
       const newFavorites = new Set(prev);
-      if (newFavorites.has(letterId)) {
-        newFavorites.delete(letterId);
-      } else {
+      if (isFavorite) {
         newFavorites.add(letterId);
+      } else {
+        newFavorites.delete(letterId);
       }
       return newFavorites;
     });
+    
+    // Update database
+    await updateFavoriteLetters(letterId, isFavorite);
     
     // Provide haptic feedback if available
     if (navigator.vibrate) {
       navigator.vibrate(50);
     }
   };
-  
+
+  // Update letter progress in database when completed
+  const updateLetterProgress = async (letterId, isCompleted = true) => {
+    if (!user) return;
+
+    try {
+      const progressData = {
+        user_id: user.id,
+        letter_id: letterId,
+        is_completed: isCompleted,
+        completed_at: isCompleted ? new Date().toISOString() : null
+      };
+
+      const { error } = await supabase
+        .from('hijaiyah_progress')
+        .upsert(progressData, {
+          onConflict: 'user_id,letter_id'
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      setCompletedLetters(prev => {
+        const newCompleted = new Set(prev);
+        if (isCompleted) {
+          newCompleted.add(letterId);
+        } else {
+          newCompleted.delete(letterId);
+        }
+        return newCompleted;
+      });
+
+      // Show success feedback
+      const letterName = hijaiyahLetters.find(l => l.id === letterId)?.latin || 'Huruf';
+      showToast.success(isCompleted ? `${letterName} ditandai sebagai dikuasai!` : `${letterName} ditandai belum dikuasai`);
+
+      // Cek dan update roadmap progress jika semua huruf sudah completed
+      // TIDAK dipanggil lagi di sini, akan dipanggil setelah tes komprehensif
+      // await updateRoadmapProgressIfAllLettersCompleted();
+
+    } catch (error) {
+      showToast.error('Gagal memperbarui progress huruf');
+    }
+  };
+
+  // Fungsi untuk handle tes komprehensif dan update roadmap progress setelah selesai
+  const handleComprehensiveTest = () => {
+    // Navigasi ke tes komprehensif tanpa letterId (tes semua huruf)
+    router.push('/latihan/comprehensive-test');
+  };
+
+  // Fungsi untuk update user_roadmap_progress jika semua huruf sudah completed
+  const updateRoadmapProgressIfAllLettersCompleted = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('Checking if all letters completed for user:', user.id);
+      
+      // Ambil data progress huruf dari database
+      const { data: progressData, error } = await supabase
+        .from('hijaiyah_progress')
+        .select('letter_id')
+        .eq('user_id', user.id)
+        .eq('is_completed', true);
+
+      if (error) {
+        console.error('Error fetching hijaiyah progress:', error);
+        return;
+      }
+      
+      const completedCount = progressData ? progressData.length : 0;
+      console.log(`User completed ${completedCount} out of 28 letters`);
+      
+      if (completedCount === 28) {
+        console.log('All 28 letters completed! Updating roadmap progress...');
+        
+        // Cek apakah sudah ada record di user_roadmap_progress untuk Level 0
+        const { data: existingRoadmap, error: checkError } = await supabase
+          .from('user_roadmap_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('roadmap_id', 1) // Level 0 biasanya roadmap_id = 1
+          .single();
+          
+        console.log('Existing roadmap data:', existingRoadmap);
+        
+        // Juga coba dengan roadmap_id = 0 jika tidak ada dengan id = 1
+        if (!existingRoadmap) {
+          const { data: existingRoadmap0, error: checkError0 } = await supabase
+            .from('user_roadmap_progress')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('roadmap_id', 0)
+            .single();
+          console.log('Existing roadmap data for ID 0:', existingRoadmap0);
+        }
+        
+        // Cek struktur roadmap_levels untuk memastikan ID yang benar
+        const { data: roadmapLevels, error: roadmapError } = await supabase
+          .from('roadmap_levels')
+          .select('id, title, order_sequence')
+          .order('order_sequence');
+          
+        console.log('Available roadmap levels:', roadmapLevels);
+        
+        // Gunakan roadmap level pertama (biasanya Level 0)
+        const firstRoadmapId = roadmapLevels && roadmapLevels.length > 0 ? roadmapLevels[0].id : 1;
+        
+        const now = new Date().toISOString();
+        const updateData = {
+          user_id: user.id,
+          roadmap_id: firstRoadmapId, // Level 0 - sesuaikan dengan data roadmap Anda
+          progress: 100,
+          status: 'completed',
+          completed_at: now,
+          created_at: existingRoadmap ? existingRoadmap.created_at : now,
+          updated_at: now,
+          sub_lessons_completed: [] // Kosong - sub lesson akan diatur berdasarkan progress individual
+        };
+        
+        console.log('Updating user_roadmap_progress with data:', updateData);
+        
+        const { data: upsertResult, error: upsertError } = await supabase
+          .from('user_roadmap_progress')
+          .upsert(updateData, { onConflict: 'user_id,roadmap_id' })
+          .select();
+          
+        if (upsertError) {
+          console.error('Error upserting roadmap progress:', upsertError);
+          showToast.error(`Gagal update roadmap: ${upsertError.message}`);
+        } else {
+          console.log('Successfully updated roadmap progress:', upsertResult);
+          showToast.success('🎉 Selamat! Anda telah menyelesaikan semua huruf Level 0. Progress roadmap diupdate!');
+        }
+      } else {
+        console.log(`Still need ${28 - completedCount} more letters to complete Level 0`);
+      }
+    } catch (err) {
+      console.error('Error in updateRoadmapProgressIfAllLettersCompleted:', err);
+      showToast.error(`Error updating roadmap: ${err.message}`);
+    }
+  };
+
+  // Update favorite letters in database
+  const updateFavoriteLetters = async (letterId, isFavorite) => {
+    if (!user) {
+      showToast.error('Anda harus login terlebih dahulu');
+      return;
+    }
+
+    try {
+      if (isFavorite) {
+        const { error } = await supabase
+          .from('favorite_letters')
+          .insert({
+            user_id: user.id,
+            letter_id: letterId
+          });
+        
+        if (error && error.code !== '23505') { // Ignore duplicate key error
+          console.error('Error adding favorite:', error);
+          throw error;
+        }
+      } else {
+        const { error } = await supabase
+          .from('favorite_letters')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('letter_id', letterId);
+        
+        if (error) {
+          console.error('Error removing favorite:', error);
+          throw error;
+        }
+      }
+
+      // Show success feedback
+      const letterName = hijaiyahLetters.find(l => l.id === letterId)?.latin || 'Huruf';
+      showToast.success(isFavorite ? `${letterName} ditambah ke favorit!` : `${letterName} dihapus dari favorit`);
+
+    } catch (error) {
+      console.error('Favorite letters error:', error);
+      
+      // Revert local state on error
+      setFavoriteLetters(prev => {
+        const newFavorites = new Set(prev);
+        if (isFavorite) {
+          newFavorites.delete(letterId);
+        } else {
+          newFavorites.add(letterId);
+        }
+        return newFavorites;
+      });
+      
+      showToast.error('Tabel favorite_letters belum ada. Silakan buat tabel terlebih dahulu.');
+    }
+  };
 
   // Play letter sound with visual feedback and auto-next for featured letters
   const playSound = (event, letterId, soundUrl, isFromFeatured = false) => {
@@ -611,7 +839,7 @@ export default function DashboardHuruf() {
     
     setIsPlaying(audio);
     audio.play().catch(err => {
-      console.error('Error playing audio:', err);
+      showToast.error('Audio tidak dapat diputar');
       setIsPlaying(null);
     });
     
@@ -665,6 +893,7 @@ export default function DashboardHuruf() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40 font-inter">
+      <Toast />
       <Head>
         <title>Belajar Huruf Hijaiyah • Makhrojul Huruf</title>
         <meta name="description" content="Pelajari huruf hijaiyah dengan metode interaktif dan menyenangkan" />
@@ -756,7 +985,9 @@ export default function DashboardHuruf() {
               <div className="flex items-center gap-4 bg-white/10 backdrop-blur-sm rounded-xl p-4">
                 <div className="flex-1">
                   <div className="flex justify-between mb-2">
-                    <span className="text-sm text-white/70">Progress Pembelajaran</span>
+                    <span className="text-sm text-white/70">
+                      {overallProgress === 100 ? 'Anda telah menyelesaikan semua huruf' : 'Progress Pembelajaran'}
+                    </span>
                     <span className="text-sm font-medium">{overallProgress}%</span>
                   </div>
                   <div className="h-2 bg-white/20 rounded-full overflow-hidden">
@@ -784,10 +1015,27 @@ export default function DashboardHuruf() {
                   Lihat Semua Huruf
                 </button>
                 
-                <button className="bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/40 text-white px-6 py-3 rounded-xl font-medium transition-colors focus:ring-2 focus:ring-white/50 focus:outline-none flex items-center gap-2">
-                  <IconClock size={18} />
-                  <span>Lanjutkan Pelajaran</span>
-                </button>
+                {/* Button Tes Komprehensif - hanya muncul jika semua huruf selesai */}
+                {overallProgress === 100 && (
+                  <button 
+                    onClick={handleComprehensiveTest}
+                    className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-medium transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:outline-none flex items-center gap-2 shadow-lg"
+                  >
+                    <IconCheck size={18} />
+                    <span> Tes Komprehensif</span>
+                  </button>
+                )}
+                
+                {/* Button biasa jika belum semua selesai */}
+                {overallProgress !== 100 && (
+                  <button 
+                    onClick={handleComprehensiveTest}
+                    className="bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/40 text-white px-6 py-3 rounded-xl font-medium transition-colors focus:ring-2 focus:ring-white/50 focus:outline-none flex items-center gap-2"
+                  >
+                    <IconCheck size={18} />
+                    <span>Tes Komprehensif</span>
+                  </button>
+                )}
               </div>
             </div>
             
@@ -841,7 +1089,7 @@ export default function DashboardHuruf() {
 
       {/* Dashboard Content - Redesigned with modern UX principles */}
       <section ref={progressRef} className="py-16 bg-gradient-to-b from-white/80 to-gray-50/50">
-        <div className="max-w-7xl mx-auto px-8 sm:px-12 lg:px-20">
+        <div className="max-w-5xl mx-auto px-8 sm:px-12 lg:px-16">
           
           {/* Enhanced Section Header with better information hierarchy */}
           <motion.div 
@@ -852,7 +1100,7 @@ export default function DashboardHuruf() {
           >
             <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full text-sm font-medium mb-6">
               <IconCheck size={16} />
-              <span>Progress Pembelajaran</span>
+              <span>{overallProgress === 100 ? 'Anda telah menyelesaikan semua huruf' : 'Progress Pembelajaran'}</span>
             </div>
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
               Pantau Kemajuan Anda
@@ -1052,6 +1300,48 @@ export default function DashboardHuruf() {
               </div>
             </div>
           </motion.div>
+
+          {/* Card Tes Komprehensif - Hanya muncul jika semua huruf selesai */}
+          {overallProgress === 100 && (
+            <motion.div 
+              initial={{ opacity: 0, y: 40, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.6, duration: 0.8 }}
+              className="mb-16"
+            >
+              <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-3xl p-8 shadow-xl text-white relative overflow-hidden">
+                {/* Background decorative elements */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full transform translate-x-32 -translate-y-32"></div>
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/5 rounded-full transform -translate-x-16 translate-y-16"></div>
+                
+                <div className="relative z-10 text-center">
+                  <motion.div
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 4, repeat: Infinity }}
+                    className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                  >
+                    <IconCheck size={32} />
+                  </motion.div>
+                  
+                  <h3 className="text-3xl font-bold mb-2">🎉 Selamat!</h3>
+                  <p className="text-xl text-green-100 mb-6">Anda telah menyelesaikan semua huruf hijaiyah!</p>
+                  <p className="text-green-100 mb-8 max-w-2xl mx-auto">
+                    Saatnya mengikuti tes komprehensif untuk memastikan pemahaman Anda dan membuka level pembelajaran selanjutnya.
+                    <br />
+                    <span className="text-sm opacity-90">* Diperlukan skor 100% untuk menyelesaikan Level 0 dan membuka roadmap selanjutnya</span>
+                  </p>
+                  
+                  <button 
+                    onClick={handleComprehensiveTest}
+                    className="bg-white text-green-600 hover:text-green-700 hover:bg-green-50 px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center gap-3 mx-auto"
+                  >
+                    <IconCheck size={24} />
+                    <span>Mulai Tes Komprehensif</span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Enhanced Navigation Tabs with better UX */}
           <motion.div 
@@ -1404,7 +1694,7 @@ export default function DashboardHuruf() {
         </div>
       </section>
 
-       {/* Enhanced FloatingDock with better positioning and styling */}
+       {/* Enhanced Dock with better positioning and styling */}
                <motion.div 
                  initial={{ opacity: 0, y: 50 }}
                  animate={{ opacity: 1, y: 0 }}
@@ -1413,7 +1703,7 @@ export default function DashboardHuruf() {
                >
                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
                  <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-2 shadow-2xl">
-                   <FloatingDock items={dockItems} />
+                   <Dock items={dockItems} />
                  </div>
                </div>
                </motion.div>
@@ -1433,151 +1723,185 @@ export default function DashboardHuruf() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+              className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="relative bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-t-3xl">
                 <button
                   onClick={() => setShowLetterDialog(false)}
-                  className="absolute top-4 right-4 p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+                  className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-full transition-colors"
                 >
                   <IconX size={20} />
                 </button>
                 
-                <div className="text-center">
-                  <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center">
-                    <span className="text-5xl font-bold font-arabic-featured text-white">
+                <div className="grid md:grid-cols-2 gap-8 items-center">
+                  {/* Left side - Letter display */}
+                  <div className="text-center">
+                    <div className="w-32 h-32 mx-auto rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-8xl font-bold font-arabic mb-4">
                       {selectedLetter.arabic}
-                    </span>
+                    </div>
+                    <h2 className="text-3xl font-bold mb-2">{selectedLetter.latin}</h2>
+                    <p className="text-white/80">{selectedLetter.description}</p>
                   </div>
-                  <h2 className="text-2xl font-bold mb-2">{selectedLetter.latin}</h2>
-                  <p className="text-white/80 text-sm">{selectedLetter.description}</p>
+
+                  {/* Right side - Actions and info */}
+                  <div className="space-y-4">
+                    {/* Action Buttons */}
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={(e) => toggleFeatured(e, selectedLetter.id)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                          featuredLetters.has(selectedLetter.id)
+                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                      >
+                        <IconStar size={18} fill={featuredLetters.has(selectedLetter.id) ? "currentColor" : "none"} />
+                        <span className="font-medium">
+                          {featuredLetters.has(selectedLetter.id) ? 'Hapus dari Pilihan' : 'Tambah ke Pilihan'}
+                        </span>
+                      </button>
+                      
+                      <button
+                        onClick={(e) => toggleFavorite(e, selectedLetter.id)}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                          favoriteLetters.has(selectedLetter.id)
+                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                      >
+                        <IconHeart size={18} fill={favoriteLetters.has(selectedLetter.id) ? "currentColor" : "none"} />
+                        <span className="font-medium">
+                          {favoriteLetters.has(selectedLetter.id) ? 'Hapus Favorit' : 'Tambah Favorit'}
+                        </span>
+                      </button>
+
+                      {/* Test button */}
+                      <button
+                        onClick={() => {
+                          setShowLetterDialog(false);
+                          router.push({
+                            pathname: '/latihan/comprehensive-test',
+                            query: { letterId: selectedLetter.id }
+                          });
+                        }}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white text-indigo-600 hover:bg-white/90 transition-colors font-medium"
+                      >
+                        <IconCheck size={18} />
+                        <span>Coba Latihan Huruf Ini</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Content */}
-              <div className="p-6 space-y-6">
-                {/* Quick Actions */}
-                <div className="flex justify-center gap-3">
-                  <button
-                    onClick={(e) => toggleFeatured(e, selectedLetter.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors ${
-                      featuredLetters.has(selectedLetter.id)
-                        ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    <IconStar size={16} fill={featuredLetters.has(selectedLetter.id) ? "currentColor" : "none"} />
-                    <span className="text-sm font-medium">
-                      {featuredLetters.has(selectedLetter.id) ? 'Hapus dari Pilihan' : 'Tambah ke Pilihan'}
-                    </span>
-                  </button>
-                  
-                  <button
-                    onClick={(e) => toggleFavorite(e, selectedLetter.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors ${
-                      favoriteLetters.has(selectedLetter.id)
-                        ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    <IconHeart size={16} fill={favoriteLetters.has(selectedLetter.id) ? "currentColor" : "none"} />
-                    <span className="text-sm font-medium">
-                      {favoriteLetters.has(selectedLetter.id) ? 'Hapus Favorit' : 'Tambah Favorit'}
-                    </span>
-                  </button>
-                </div>
-
-                {/* Audio Section */}
-                <div className="bg-gray-50 rounded-2xl p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <IconVolume size={18} className="text-indigo-600" />
-                    Pelafalan
-                  </h3>
-                  <button
-                    onClick={(e) => playSound(e, selectedLetter.id, selectedLetter.sound)}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <IconVolume size={18} className={isPlaying ? "animate-pulse" : ""} />
-                    <span>Dengarkan Pelafalan</span>
-                  </button>
-                  {/* Tambahkan tombol "Coba Latihan" */}
-                  <button
-                    onClick={() => {
-                      setShowLetterDialog(false);
-                      setTimeout(() => {
-                        router.push('/latihan/hijaiyah-quiz');
-                      }, 200);
-                    }}
-                    className="w-full mt-3 bg-blue-100 hover:bg-blue-200 text-blue-700 py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <IconCheck size={18} />
-                    Coba Latihan
-                  </button>
-                  {/* Tambahkan tombol "Coba Pelafalan" */}
-                  <button
-                    onClick={() => {
-                      setShowLetterDialog(false);
-                      setTimeout(() => {
-                        router.push('/latihan/pengucapan');
-                      }, 200);
-                    }}
-                    className="w-full mt-3 bg-green-100 hover:bg-green-200 text-green-700 py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <IconMicrophone size={18} />
-                    Coba Pelafalan
-                  </button>
-                </div>
-                {/* Makhraj Section */}
-                <div className="bg-blue-50 rounded-2xl p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <IconMicrophone size={18} className="text-blue-600" />
-                    Makhraj (Tempat Keluarnya Huruf)
-                  </h3>
-                  <p className="text-gray-700">{selectedLetter.makhraj}</p>
-                </div>
-
-                {/* Progress Section */}
-                <div className="bg-green-50 rounded-2xl p-4">
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <IconCheck size={18} className="text-green-600" />
-                    Progress Pembelajaran
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Penguasaan</span>
-                      <span className="text-sm font-medium text-gray-900">{selectedLetter.progress}%</span>
+              {/* Body Content */}
+              <div className="p-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Left column */}
+                  <div className="space-y-6">
+                    {/* Audio Section */}
+                    <div className="bg-gray-50 rounded-2xl p-4">
+                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <IconVolume size={18} className="text-indigo-600" />
+                        Pelafalan
+                      </h3>
+                      <button
+                        onClick={(e) => playSound(e, selectedLetter.id, selectedLetter.sound)}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-4 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                      >
+                        <IconVolume size={18} className={isPlaying ? "animate-pulse" : ""} />
+                        <span>Dengarkan Pelafalan</span>
+                      </button>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${selectedLetter.progress}%` }}
-                      ></div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {completedLetters.has(selectedLetter.id) ? (
-                        <span className="inline-flex items-center gap-1 text-sm font-medium text-green-600">
-                          <IconCheck size={14} />
-                          Sudah Dikuasai
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-600">Masih dalam proses pembelajaran</span>
-                      )}
+                    
+                    {/* Makhraj Section */}
+                    <div className="bg-blue-50 rounded-2xl p-4">
+                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <IconMicrophone size={18} className="text-blue-600" />
+                        Makhraj (Tempat Keluarnya Huruf)
+                      </h3>
+                      <p className="text-gray-700">{selectedLetter.makhraj}</p>
                     </div>
                   </div>
-                </div>
 
-                {/* Difficulty Badge */}
-                <div className="text-center">
-                  <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium ${
-                    selectedLetter.difficulty === 'beginner' ? 'bg-green-100 text-green-700' :
-                    selectedLetter.difficulty === 'intermediate' ? 'bg-amber-100 text-amber-700' :
-                    'bg-rose-100 text-rose-700'
-                  }`}>
-                    Tingkat: {selectedLetter.difficulty === 'beginner' ? 'Dasar' :
-                             selectedLetter.difficulty === 'intermediate' ? 'Menengah' : 'Lanjutan'}
-                  </span>
+                  {/* Right column */}
+                  <div className="space-y-6">
+                    {/* Progress Section */}
+                    <div className="bg-green-50 rounded-2xl p-4">
+                      <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <IconCheck size={18} className="text-green-600" />
+                        {completedLetters.has(selectedLetter.id) ? 'Huruf Telah Dikuasai' : 'Progress Pembelajaran'}
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">Status</span>
+                          <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                            completedLetters.has(selectedLetter.id)
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {completedLetters.has(selectedLetter.id) ? 'Sudah Dikuasai' : 'Dalam Proses'}
+                          </span>
+                        </div>
+                        
+                        {/* Show completion date if available */}
+                        {completedLetters.has(selectedLetter.id) && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Diselesaikan</span>
+                            <span className="text-sm text-gray-900">
+                              {(() => {
+                                const progressItem = hijaiyahProgressData.find(
+                                  item => item.letter_id === selectedLetter.id && item.is_completed
+                                );
+                                if (progressItem?.completed_at) {
+                                  return new Date(progressItem.completed_at).toLocaleDateString('id-ID', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  });
+                                }
+                                return 'Hari ini';
+                              })()}
+                            </span>
+                          </div>
+                        )}
+                        
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              completedLetters.has(selectedLetter.id) ? 'bg-green-500' : 'bg-amber-500'
+                            }`}
+                            style={{ width: completedLetters.has(selectedLetter.id) ? '100%' : '50%' }}
+                          ></div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {completedLetters.has(selectedLetter.id) ? (
+                            <span className="inline-flex items-center gap-1 text-sm font-medium text-green-600">
+                              <IconCheck size={14} />
+                              Sudah Dikuasai
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-600">Masih dalam proses pembelajaran</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Difficulty Badge */}
+                    <div className="text-center">
+                      <span className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium ${
+                        selectedLetter.difficulty === 'beginner' ? 'bg-green-100 text-green-700' :
+                        selectedLetter.difficulty === 'intermediate' ? 'bg-amber-100 text-amber-700' :
+                        'bg-rose-100 text-rose-700'
+                      }`}>
+                        Tingkat: {selectedLetter.difficulty === 'beginner' ? 'Dasar' :
+                                 selectedLetter.difficulty === 'intermediate' ? 'Menengah' : 'Lanjutan'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </motion.div>

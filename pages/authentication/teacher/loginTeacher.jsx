@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 
 const pageVariants = {
@@ -19,6 +19,50 @@ export default function LoginTeacher() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
+
+  // Emergency stop function
+  const stopRedirectLoop = () => {
+    setLoading(false);
+    setRedirecting(false);
+    setHasCheckedAuth(true);
+    // Clear any stored auth data
+    localStorage.removeItem('isTeacher');
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('teacherEmail');
+    localStorage.removeItem('teacherName');
+    localStorage.removeItem('teacherId');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('teacherInstitution');
+    sessionStorage.clear();
+  };
+
+  // Check if teacher is already logged in
+  useEffect(() => {
+    if (hasCheckedAuth) return; // Prevent re-execution
+    
+    const checkExistingAuth = async () => {
+      try {
+        const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+        const isTeacher = localStorage.getItem('isTeacher') === 'true';
+        const teacherEmail = localStorage.getItem('teacherEmail');
+        
+        if (isLoggedIn && isTeacher && teacherEmail) {
+          setRedirecting(true);
+          setTimeout(() => {
+            window.location.replace('/dashboard/teacher/DashboardStats');
+          }, 1000);
+        } else {
+          setHasCheckedAuth(true);
+        }
+      } catch (error) {
+        setHasCheckedAuth(true);
+      }
+    };
+
+    checkExistingAuth();
+  }, [hasCheckedAuth]); // Only depend on hasCheckedAuth
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -46,9 +90,6 @@ export default function LoginTeacher() {
           .single()
       ]);
 
-      console.log('Verification check:', verificationData);
-      console.log('Profile check:', profileData);
-
       if (!verificationData) {
         throw new Error('Akun belum diverifikasi oleh admin');
       }
@@ -74,11 +115,12 @@ export default function LoginTeacher() {
       localStorage.setItem('teacherName', profileData.full_name);
       localStorage.setItem('teacherInstitution', profileData.institution);
 
-      // Use direct navigation instead of router
-      window.location.href = '/dashboard/teacher/DashboardStats';
+      setRedirecting(true);
+      setTimeout(() => {
+        window.location.href = '/dashboard/teacher/DashboardStats';
+      }, 1000);
 
     } catch (error) {
-      console.error('Login Error:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -86,21 +128,52 @@ export default function LoginTeacher() {
   };
 
   return (
-    <motion.div
-      className="min-h-screen bg-gradient-to-br from-purple-700 via-indigo-600 to-blue-500 flex items-center justify-center p-4"
-      variants={pageVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-    >
+    <>
       <Head>
         <title>Login Guru | Makruf</title>
       </Head>
 
+      {/* Loading Overlay with Emergency Stop */}
+      {(loading || redirecting) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md">
+            <div className="flex items-center space-x-3 mb-4">
+              <svg className="animate-spin h-6 w-6 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="text-gray-900 font-medium">
+                {redirecting ? 'Mengarahkan ke Dashboard...' : 'Memuat...'}
+              </span>
+            </div>
+            {(loading || redirecting) && (
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-3">
+                  Stuck in loading? Click below to reset
+                </p>
+                <button
+                  onClick={stopRedirectLoop}
+                  className="w-full bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+                >
+                  🔄 Reset & Try Again
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <motion.div
-        className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md"
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
+        className="min-h-screen bg-gradient-to-br from-purple-700 via-indigo-600 to-blue-500 flex items-center justify-center p-4"
+        variants={pageVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+      >
+        <motion.div
+          className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md"
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}
       >
         <div className="text-center mb-8">
@@ -178,8 +251,9 @@ export default function LoginTeacher() {
             Kembali ke login user
           </button>
         </div>
+        </motion.div>
       </motion.div>
-    </motion.div>
+    </>
   );
 }
 

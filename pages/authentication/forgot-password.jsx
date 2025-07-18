@@ -19,8 +19,15 @@ export default function ForgotPassword() {
     showToast.info('Memproses permintaan reset password...');
 
     try {
+      // Get the actual domain from environment or current location
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+      const redirectUrl = `${baseUrl}/authentication/reset-password`;
+      
+      console.log('Sending reset email to:', email);
+      console.log('Redirect URL:', redirectUrl);
+
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/authentication/reset-password`,
+        redirectTo: redirectUrl,
       });
 
       if (error) throw error;
@@ -28,8 +35,14 @@ export default function ForgotPassword() {
       setEmailSent(true);
       showToast.success('Link reset password telah dikirim ke email Anda');
     } catch (error) {
-      console.error('Error:', error);
-      showToast.error(error.message || 'Terjadi kesalahan saat memproses permintaan');
+      console.error('Error sending reset email:', error);
+      if (error.message?.includes('rate limit')) {
+        showToast.error('Terlalu banyak permintaan. Silakan tunggu beberapa menit sebelum mencoba lagi.');
+      } else if (error.message?.includes('not found')) {
+        showToast.error('Email tidak ditemukan. Pastikan email yang Anda masukkan sudah terdaftar.');
+      } else {
+        showToast.error(error.message || 'Terjadi kesalahan saat memproses permintaan');
+      }
     } finally {
       setLoading(false);
     }
@@ -77,12 +90,12 @@ export default function ForgotPassword() {
           <title>Lupa Password | Belajar Makhrojul Huruf</title>
         </Head>
 
-        <div className="w-full flex items-center justify-center p-8">
+        <div className="w-full flex items-center justify-center p-4 lg:p-8">
           <motion.div
-            className="w-full max-w-md"
-            initial={{ scale: 0.95 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 0.3 }}
+            className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 mx-2 my-4 lg:mx-4 lg:my-6"
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
           >
             {!emailSent ? (
               <>

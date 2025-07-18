@@ -136,7 +136,9 @@ useEffect(() => {
     if (isUpdated) {
       return {
         title: broken ? "Streak Direset!" : "Streak Diperbarui!",
-        description: broken ? "Streak Anda telah direset. Mulai lagi hari ini!" : "Streak Anda telah diperbarui!",
+        description: broken 
+          ? "Streak Anda telah direset. Mulai lagi hari ini!" 
+          : `Streak Anda bertambah! Anda juga mendapat +1 energi bonus`,
         icon: broken ? "💔" : "🔥",
         bgColor: broken ? "bg-red-100" : "bg-yellow-100",
         textColor: broken ? "text-red-600" : "text-yellow-600"
@@ -146,7 +148,7 @@ useEffect(() => {
     if (broken) {
       return {
         title: "Streak Terputus!",
-        description: "Anda tidak login kemarin. Mulai streak baru hari ini!",
+        description: "Anda tidak login kemarin. Mulai streak baru hari ini dan dapatkan +1 energi!",
         icon: "💔",
         bgColor: "bg-red-100",
         textColor: "text-red-600"
@@ -156,7 +158,7 @@ useEffect(() => {
     if (count === 1) {
       return {
         title: "Streak Dimulai!",
-        description: "Hari pertama streak Anda. Pertahankan konsistensi!",
+        description: "Hari pertama streak Anda. Anda mendapat +1 energi bonus. Pertahankan konsistensi!",
         icon: "🔥",
         bgColor: "bg-yellow-100", 
         textColor: "text-yellow-600"
@@ -165,7 +167,7 @@ useEffect(() => {
 
     return {
       title: "Selamat! Streak Bertambah",
-      description: `Hari ke-${count} Anda belajar konsisten. Pertahankan!`,
+      description: `Hari ke-${count} Anda belajar konsisten. Bonus +1 energi diberikan. Pertahankan!`,
       icon: "🔥",
       bgColor: "bg-yellow-100",
       textColor: "text-yellow-600"

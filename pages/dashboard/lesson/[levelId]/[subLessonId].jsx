@@ -118,6 +118,22 @@ export default function LessonPage() {
     );
     const isAnswerCorrect = selectedOption.is_correct;
 
+    // Save answer to user_answers table
+    try {
+      const userId = localStorage.getItem('userId');
+      await supabase
+        .from('user_answers')
+        .insert({
+          user_id: userId,
+          question_id: currentQuestionData.id,
+          selected_option_id: selectedAnswer,
+          is_correct: isAnswerCorrect,
+          answered_at: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('Error saving user answer:', error);
+    }
+
     // Update quiz results
     setQuizResults(prev => ({
       ...prev,
@@ -150,8 +166,123 @@ export default function LessonPage() {
 
   const handleQuizComplete = async () => {
     const finalScore = (score / questions.length) * 100;
+    const correctAnswers = score;
+    const totalQuestions = questions.length;
+    
     setQuizResults(prev => ({ ...prev, score: finalScore }));
+    
+    // Save quiz result to database
+    try {
+      const userId = localStorage.getItem('userId');
+      
+      // Save to user_progress table with score details
+      await supabase
+        .from('user_progress')
+        .upsert({
+          user_id: userId,
+          sub_lesson_id: subLessonId,
+          completed: true,
+          completed_at: new Date().toISOString(),
+          score_percentage: finalScore,
+          correct_answers: correctAnswers,
+          total_questions: totalQuestions
+        }, {
+          onConflict: 'user_id,sub_lesson_id'
+        });
+
+      // Update roadmap progress
+      await updateRoadmapProgress(userId, levelId, subLessonId);
+      
+      console.log('Quiz results saved successfully');
+    } catch (error) {
+      console.error('Error saving quiz results:', error);
+    }
+    
     setShowResultDialog(true);
+  };
+
+  // New function to update roadmap progress
+  const updateRoadmapProgress = async (userId, levelId, completedSubLessonId) => {
+    try {
+      // First, get all sub-lessons for this level
+      const { data: allSubLessons, error: subLessonsError } = await supabase
+        .from('roadmap_sub_lessons')
+        .select('id')
+        .eq('level_id', levelId)
+        .order('order_sequence');
+
+      if (subLessonsError) throw subLessonsError;
+
+      // Get current roadmap progress
+      const { data: currentProgress, error: progressError } = await supabase
+        .from('user_roadmap_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('roadmap_id', levelId)
+        .single();
+
+      let existingCompletedSubLessons = [];
+      if (!progressError && currentProgress) {
+        existingCompletedSubLessons = currentProgress.sub_lessons_completed || [];
+      }
+
+      // Add the newly completed sub-lesson if not already in the array
+      const completedSubLessonIdInt = parseInt(completedSubLessonId);
+      if (!existingCompletedSubLessons.includes(completedSubLessonIdInt)) {
+        existingCompletedSubLessons.push(completedSubLessonIdInt);
+      }
+
+      // Calculate progress percentage
+      const totalSubLessons = allSubLessons.length;
+      const completedCount = existingCompletedSubLessons.length;
+      const progressPercentage = Math.round((completedCount / totalSubLessons) * 100);
+
+      // Determine status
+      let status = 'active';
+      if (progressPercentage === 100) {
+        status = 'completed';
+      } else if (progressPercentage > 0) {
+        status = 'in_progress';
+      }
+
+      // Upsert roadmap progress
+      const progressData = {
+        user_id: userId,
+        roadmap_id: parseInt(levelId),
+        progress: progressPercentage,
+        status: status,
+        sub_lessons_completed: existingCompletedSubLessons,
+        updated_at: new Date().toISOString()
+      };
+
+      // If completing for the first time, add created_at
+      if (!currentProgress) {
+        progressData.created_at = new Date().toISOString();
+      }
+
+      // If just completed (100%), add completed_at
+      if (progressPercentage === 100 && (!currentProgress || currentProgress.progress < 100)) {
+        progressData.completed_at = new Date().toISOString();
+      }
+
+      const { error: upsertError } = await supabase
+        .from('user_roadmap_progress')
+        .upsert(progressData, {
+          onConflict: 'user_id,roadmap_id'
+        });
+
+      if (upsertError) throw upsertError;
+
+      console.log('Roadmap progress updated successfully:', {
+        levelId,
+        completedSubLessons: existingCompletedSubLessons,
+        progress: progressPercentage,
+        status
+      });
+
+    } catch (error) {
+      console.error('Error updating roadmap progress:', error);
+    }
   };
 
   if (loading) {

@@ -16,7 +16,7 @@ const pageTransition = {
 
 export default function OTPVerification() {
   const router = useRouter();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [timeLeft, setTimeLeft] = useState(60);
@@ -42,7 +42,7 @@ export default function OTPVerification() {
     setOtp(newOtp);
 
     // Move to next input if current one is filled
-    if (value && index < 5) {
+    if (value && index < 3) {
       inputRefs.current[index + 1].focus();
     }
   };
@@ -70,8 +70,8 @@ export default function OTPVerification() {
 
     try {
       const otpString = otp.join('');
-      if (otpString.length !== 6) {
-        throw new Error('Masukkan 6 digit kode OTP');
+      if (otpString.length !== 4) {
+        throw new Error('Masukkan 4 digit kode OTP');
       }
 
       // Add your OTP verification logic here
@@ -120,7 +120,7 @@ export default function OTPVerification() {
           <div className="text-center mb-10">
             <h2 className="text-3xl font-bold text-gray-800 mb-2">Verifikasi OTP</h2>
             <p className="text-gray-600">
-              Masukkan kode 6 digit yang telah kami kirimkan ke email Anda
+              Masukkan kode 4 digit yang telah kami kirimkan ke email Anda
             </p>
           </div>
 
@@ -135,7 +135,7 @@ export default function OTPVerification() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex justify-center gap-2">
+            <div className="flex justify-center gap-3">
               {otp.map((digit, index) => (
                 <input
                   key={index}
@@ -146,7 +146,7 @@ export default function OTPVerification() {
                   value={digit}
                   onChange={e => handleChange(index, e.target.value)}
                   onKeyDown={e => handleKeyDown(index, e)}
-                  className="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:outline-none focus:border-secondary focus:ring-2 focus:ring-secondary"
+                  className="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-300 rounded-lg focus:outline-none focus:border-secondary focus:ring-2 focus:ring-secondary"
                   required
                 />
               ))}
@@ -176,7 +176,7 @@ export default function OTPVerification() {
               className="w-full bg-secondary text-white py-3 rounded-lg font-medium"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              disabled={loading || otp.join('').length !== 6}
+              disabled={loading || otp.join('').length !== 4}
             >
               {loading ? 'Memverifikasi...' : 'Verifikasi'}
             </motion.button>

@@ -200,7 +200,7 @@ const DailyChallenge = () => {
       <motion.div 
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="fixed bottom-24 right-4 z-50"
+        className="relative z-50"
       >
         <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 max-w-sm">
           <div className="flex flex-col items-center space-y-3">
@@ -224,7 +224,7 @@ const DailyChallenge = () => {
       <motion.div 
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="fixed bottom-24 right-4 z-50"
+        className="relative z-50"
       >
         <div className="bg-white rounded-2xl shadow-lg border border-red-200 p-6 max-w-sm">
           <div className="text-center space-y-3">
@@ -247,7 +247,7 @@ const DailyChallenge = () => {
       <motion.div 
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="fixed bottom-24 right-4 z-50"
+        className="relative z-50"
       >
         <div className="bg-white rounded-2xl shadow-lg border border-amber-200 p-6 max-w-sm">
           <div className="text-center space-y-3">
@@ -267,7 +267,7 @@ const DailyChallenge = () => {
   // Don't render if hidden (comment out for testing)
   // if (!isVisible) return null;
 
-  // Enhanced minimized view with vertical layout
+  // Minimized view as icon with countdown badge
   if (isMinimized) {
     return (
       <AnimatePresence>
@@ -276,82 +276,116 @@ const DailyChallenge = () => {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.8, y: 20 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
-          className="fixed bottom-24 right-4 z-50"
+          className="relative z-50"
         >
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className={`bg-gradient-to-br ${getChallengeGradient(challenge.type)} rounded-2xl shadow-xl text-white overflow-hidden cursor-pointer backdrop-blur-sm w-48`}
-            onClick={toggleMinimize}
-          >
-            {/* Floating particles */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {[...Array(3)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute w-1 h-1 bg-white/30 rounded-full"
-                  animate={{
-                    y: [-10, -60],
-                    opacity: [0, 0.8, 0],
-                    scale: [0.5, 1, 0.5],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    delay: i * 0.3,
-                  }}
-                  style={{
-                    left: `${30 + i * 20}%`,
-                    top: '100%',
-                  }}
-                />
-              ))}
-            </div>
-
-            <div className="relative px-4 py-4">
-              {/* Header with close button */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm shadow-lg">
-                  {getTypeIcon(challenge.type, 16)}
-                </div>
-                <motion.button
-                  whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.3)' }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    hideChallenge();
-                  }}
-                  className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center transition-colors"
-                >
-                  <IconX size={12} />
-                </motion.button>
+          <div className="relative">
+            {/* Main Icon Button */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleMinimize}
+              className={`relative w-16 h-16 bg-gradient-to-br ${getChallengeGradient(challenge.type)} rounded-full shadow-2xl flex items-center justify-center overflow-hidden backdrop-blur-sm border-2 border-white/30`}
+            >
+              {/* Floating particles inside icon */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {[...Array(3)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute w-0.5 h-0.5 bg-white/40 rounded-full"
+                    animate={{
+                      y: [16, -16],
+                      opacity: [0, 1, 0],
+                      scale: [0.5, 1, 0.5],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      delay: i * 0.4,
+                    }}
+                    style={{
+                      left: `${25 + i * 25}%`,
+                      top: '100%',
+                    }}
+                  />
+                ))}
               </div>
 
-              {/* Title and Points */}
-              <div className="text-center space-y-2">
-                <div>
-                  <div className="font-bold text-sm">Tantangan Harian</div>
-                  <div className="text-white/90 text-xs">{challenge.points} poin</div>
-                </div>
-                
-                {/* Countdown */}
-                <div className="bg-white/10 rounded-lg px-3 py-2 backdrop-blur-sm">
-                  <div className="text-xs text-white/70 font-medium mb-1">Berakhir dalam</div>
-                  <div className="flex items-center justify-center gap-1 text-white font-mono text-sm">
-                    <IconClock size={12} />
-                    <span>{String(timeLeft.hours).padStart(2, '0')}:{String(timeLeft.minutes).padStart(2, '0')}</span>
-                  </div>
-                </div>
+              {/* Icon */}
+              <div className="relative z-10">
+                {getTypeIcon(challenge.type, 28)}
               </div>
-            </div>
 
-            {/* Shine effect */}
+              {/* Pulse ring animation */}
+              <motion.div
+                className="absolute inset-0 rounded-full border-2 border-white/50"
+                animate={{
+                  scale: [1, 1.2, 1],
+                  opacity: [0.5, 0, 0.5],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              />
+
+              {/* Shine effect */}
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full rounded-full"
+                animate={{ x: ['-100%', '200%'] }}
+                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+              />
+            </motion.button>
+
+            {/* Close button overlay */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                hideChallenge();
+              }}
+              className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-20"
+              title="Tutup tantangan"
+            >
+              <IconX size={12} className="text-white" />
+            </motion.button>
+
+            {/* Points badge */}
             <motion.div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full"
-              animate={{ x: ['0%', '200%'] }}
-              transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-            />
-          </motion.div>
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="absolute -top-2 -left-2 bg-yellow-500 text-yellow-900 text-xs font-bold px-2 py-1 rounded-full shadow-lg border-2 border-white z-20"
+            >
+              {challenge.points}p
+            </motion.div>
+
+            {/* Countdown Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="absolute -bottom-3 right-0 z-20"
+            >
+              <div className="bg-white rounded-full px-2.5 py-1.5 shadow-lg border border-slate-200">
+                <div className="flex items-center justify-center gap-1">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                  >
+                    <IconClock size={12} className="text-slate-600" />
+                  </motion.div>
+                  <span className="text-xs font-mono font-bold text-slate-700 whitespace-nowrap">
+                    {String(timeLeft.hours).padStart(2, '0')}:{String(timeLeft.minutes).padStart(2, '0')}:{String(timeLeft.seconds).padStart(2, '0')}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Badge arrow pointing to icon */}
+              <div className="absolute -top-1 right-4 w-0 h-0 border-l-3 border-r-3 border-b-3 border-transparent border-b-white"></div>
+            </motion.div>
+          </div>
         </motion.div>
       </AnimatePresence>
     );
@@ -364,7 +398,7 @@ const DailyChallenge = () => {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.8, y: 20 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
-        className="fixed bottom-24 right-4 z-50 w-96"
+        className="relative z-50 w-96"
       >
         {/* Enhanced Challenge Card */}
         <div className={`bg-gradient-to-br ${getChallengeGradient(challenge.type)} rounded-2xl shadow-2xl text-white overflow-hidden border border-white/20 backdrop-blur-sm`}>
@@ -391,16 +425,6 @@ const DailyChallenge = () => {
               />
             ))}
           </div>
-
-          {/* Debug Info - Hidden in production */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="bg-black/30 px-4 py-2 text-xs backdrop-blur-sm border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="font-mono">{debugInfo}</span>
-              </div>
-            </div>
-          )}
           
           {/* Enhanced Header */}
           <div className="relative px-6 py-4 bg-white/10 backdrop-blur-md border-b border-white/20">

@@ -116,7 +116,7 @@ const AdminData = () => {
     { 
       title: "Aktivitas", 
       icon: <IconActivity />, 
-      onClick: () => router.push('/dashboard/admin/DashboardActivity')
+      onClick: () => router.push('/dashboard/admin/activity/DashboardActivity')
     },
     // { 
     //   title: "Pengumuman", 
@@ -311,7 +311,7 @@ const AdminData = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 cursor-pointer"
-                onClick={() => router.push('/dashboard/admin/activity/AdminEvent')}
+                onClick={() => router.push('/dashboard/admin/event/AdminEvent')}
               >
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">

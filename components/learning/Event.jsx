@@ -1,18 +1,18 @@
 import {
-  IconCalendar,
-  IconClock,
-  IconMapPin,
-  IconRefresh,
-  IconSearch,
-  IconSparkles,
-  IconUser,
-  IconUsers,
-  IconX
+    IconCalendar,
+    IconClock,
+    IconMapPin,
+    IconRefresh,
+    IconSearch,
+    IconSparkles,
+    IconUser,
+    IconUsers,
+    IconX
 } from '@tabler/icons-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import HijriDate from 'hijri-date';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { useHijriCalendar } from '../../utils/hijriCalendar';
 
 // Custom hook for accessibility
 const useAccessibility = () => {
@@ -62,6 +62,9 @@ const Events = () => {
   const [filterType, setFilterType] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Use Hijri calendar hook
+  const { currentHijriDate } = useHijriCalendar();
   
   // Accessibility hooks
   const { isHighContrast, fontSize } = useAccessibility();
@@ -147,53 +150,6 @@ const Events = () => {
     return new Date(dateString).toLocaleDateString('id-ID', options);
   }, []);
 
-  const formatHijriDate = useCallback((dateString) => {
-    if (!dateString || isNaN(new Date(dateString).getTime())) {
-      return '';
-    }
-
-    try {
-      const date = new Date(dateString);
-      const hijri = new HijriDate(date);
-      
-      let day, month, year;
-      
-      if (typeof hijri.date === 'function') {
-        day = hijri.date();
-      } else if (hijri._date !== undefined) {
-        day = hijri._date;
-      } else {
-        day = 1;
-      }
-      
-      if (typeof hijri.month === 'function') {
-        month = hijri.month();
-      } else if (hijri._month !== undefined) {
-        month = hijri._month;
-      } else {
-        month = 1;
-      }
-      
-      if (typeof hijri.year === 'function') {
-        year = hijri.year();
-      } else if (hijri._year !== undefined) {
-        year = hijri._year;
-      } else {
-        const currentYear = new Date().getFullYear();
-        year = Math.floor((currentYear - 622) * 1.030684);
-      }
-
-      const monthIndex = Math.max(0, Math.min((month - 1), hijriMonths.length - 1));
-      const monthName = hijriMonths[monthIndex];
-
-      return `${day} ${monthName} ${year} H`;
-      
-    } catch (err) {
-      console.error('Error converting to Hijri date:', err);
-      return '~ Hijriyah';
-    }
-  }, [hijriMonths]);
-  
   const formatTime = useCallback((timeString) => {
     if (!timeString) return 'Waktu belum ditentukan';
     return timeString.substring(0, 5) + ' WIB';
@@ -316,6 +272,59 @@ const Events = () => {
     return filtered;
   }, [events, searchTerm, filterType, sortBy]);
 
+  // Helper function to get event status info
+  const getEventStatusInfo = useCallback((event) => {
+    const eventDate = new Date(event.date);
+    const currentDate = new Date();
+    const status = event.status?.toLowerCase();
+    
+    // Determine if event is actionable based on status and date
+    const isActionable = status === 'aktif' || status === 'dijadwalkan';
+    const isCompleted = status === 'selesai';
+    const isSystemEvent = event.type?.toLowerCase() === 'sistem' || event.type?.toLowerCase() === 'fitur';
+    
+    let statusText = '';
+    let statusColor = '';
+    let buttonText = '';
+    let buttonDisabled = false;
+    
+    switch (status) {
+      case 'aktif':
+        statusText = '🎯 Aktif';
+        statusColor = 'bg-green-50 text-green-700 border border-green-200';
+        buttonText = isSystemEvent ? 'Lihat Detail' : 'Mulai Event';
+        buttonDisabled = false;
+        break;
+      case 'dijadwalkan':
+        statusText = '📅 Dijadwalkan';
+        statusColor = 'bg-blue-50 text-blue-700 border border-blue-200';
+        buttonText = 'Daftar Sekarang';
+        buttonDisabled = false;
+        break;
+      case 'selesai':
+        statusText = '✅ Selesai';
+        statusColor = 'bg-gray-50 text-gray-700 border border-gray-200';
+        buttonText = 'Lihat Recap';
+        buttonDisabled = true;
+        break;
+      default:
+        statusText = '❓ Status Tidak Diketahui';
+        statusColor = 'bg-gray-50 text-gray-700 border border-gray-200';
+        buttonText = 'Lihat Detail';
+        buttonDisabled = true;
+    }
+    
+    return {
+      isActionable,
+      isCompleted,
+      isSystemEvent,
+      statusText,
+      statusColor,
+      buttonText,
+      buttonDisabled
+    };
+  }, []);
+
   // Enhanced keyboard navigation
   const handleKeyDown = useCallback((event, action) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -323,6 +332,23 @@ const Events = () => {
       action();
     }
   }, []);
+
+  // Handle event action based on type and status
+  const handleEventAction = useCallback((event) => {
+    const statusInfo = getEventStatusInfo(event);
+    
+    if (statusInfo.buttonDisabled) {
+      return; // Don't do anything for disabled buttons
+    }
+    
+    if (statusInfo.isSystemEvent) {
+      // For system events, just show an alert or modal
+      alert(`${event.title}\n\n${event.description}`);
+    } else {
+      // For regular events, navigate to event page
+      window.location.href = `/dashboard/event/${event.id}`;
+    }
+  }, [getEventStatusInfo]);
 
   // Loading state with better UX
   if (loading) {
@@ -454,7 +480,7 @@ const Events = () => {
       <hr className="border-white/30 mb-4" />
 
       <div className="text-lg sm:text-xl font-semibold tracking-wide text-cyan-200 drop-shadow-sm">
-        {formatHijriDate(new Date())}
+        {currentHijriDate || 'Memuat tanggal Hijriyah...'}
       </div>
     </motion.div>
   </motion.header>
@@ -507,7 +533,7 @@ const Events = () => {
           ) : (
             filteredAndSortedEvents.map((event, index) => {
               const eventStyle = getEventStyle(event.type);
-              const isUpcoming = new Date(event.date) >= new Date();
+              const statusInfo = getEventStatusInfo(event);
 
               return (
                 <motion.article
@@ -515,12 +541,13 @@ const Events = () => {
                   variants={itemVariants}
                   whileHover={cardVariants.hover}
                   layout
-                  className={`group bg-white rounded-3xl shadow-xl hover:shadow-2xl ${eventStyle.shadow} transition-all duration-500 overflow-hidden border border-slate-100 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2`}
+                  className={`group bg-white rounded-3xl shadow-xl hover:shadow-2xl ${eventStyle.shadow} transition-all duration-500 overflow-hidden border border-slate-100 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 ${
+                    statusInfo.isCompleted ? 'opacity-75' : ''
+                  }`}
                   role="article"
                   aria-labelledby={`event-title-${event.id}`}
                   tabIndex="0"
                   onKeyDown={(e) => handleKeyDown(e, () => {
-                    // Handle event click/selection
                     console.log('Event selected:', event.title);
                   })}
                 >
@@ -528,7 +555,9 @@ const Events = () => {
                   <div className="lg:flex lg:min-h-[300px]">
                     
                     {/* Left Side - Event Visual Header */}
-                    <div className={`lg:w-2/5 h-64 lg:h-auto relative overflow-hidden bg-gradient-to-br ${eventStyle.gradient} group-hover:${eventStyle.gradientHover} transition-all duration-500`}>
+                    <div className={`lg:w-2/5 h-64 lg:h-auto relative overflow-hidden bg-gradient-to-br ${eventStyle.gradient} group-hover:${eventStyle.gradientHover} transition-all duration-500 ${
+                      statusInfo.isCompleted ? 'opacity-80' : ''
+                    }`}>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
                       <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
                       
@@ -542,15 +571,11 @@ const Events = () => {
                           {event.type}
                         </span>
                         <span 
-                          className={`px-4 py-2 rounded-full text-sm font-bold backdrop-blur-sm ${
-                            isUpcoming 
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                              : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}
+                          className={`px-4 py-2 rounded-full text-sm font-bold backdrop-blur-sm ${statusInfo.statusColor}`}
                           role="badge"
-                          aria-label={`Status: ${isUpcoming ? 'Event mendatang' : 'Event telah selesai'}`}
+                          aria-label={`Status: ${statusInfo.statusText}`}
                         >
-                          {isUpcoming ? '🎯 Mendatang' : '📅 Selesai'}
+                          {statusInfo.statusText}
                         </span>
                       </div>
 
@@ -656,29 +681,25 @@ const Events = () => {
 
                         {/* Enhanced CTA Button */}
                         <button
-                          className={`px-8 py-4 text-white rounded-2xl font-bold shadow-xl hover:shadow-2xl flex items-center gap-3 transition-all duration-200 text-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${eventStyle.button} ${
-                            !isUpcoming 
-                              ? 'opacity-60 cursor-not-allowed focus:ring-slate-400' 
-                              : 'focus:ring-blue-500'
+                          onClick={() => handleEventAction(event)}
+                          className={`px-8 py-4 text-white rounded-2xl font-bold shadow-xl hover:shadow-2xl flex items-center gap-3 transition-all duration-200 text-lg focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                            statusInfo.buttonDisabled 
+                              ? 'bg-gray-400 cursor-not-allowed opacity-60 focus:ring-gray-400' 
+                              : `${eventStyle.button} focus:ring-blue-500`
                           }`}
-                          disabled={!isUpcoming}
-                          aria-label={
-                            isUpcoming 
-                              ? `Daftar untuk event ${event.title}` 
-                              : `Event ${event.title} telah selesai`
-                          }
+                          disabled={statusInfo.buttonDisabled}
+                          aria-label={`${statusInfo.buttonText} untuk event ${event.title}`}
                           onKeyDown={(e) => handleKeyDown(e, () => {
-                            if (isUpcoming) {
-                              console.log('Register for event:', event.title);
-                            }
+                            handleEventAction(event);
                           })}
                         >
                           <IconSparkles size={20} aria-hidden="true" />
                           <span className="hidden sm:inline">
-                            {isUpcoming ? 'Daftar Sekarang' : 'Telah Selesai'}
+                            {statusInfo.buttonText}
                           </span>
                           <span className="sm:hidden">
-                            {isUpcoming ? 'Daftar' : 'Selesai'}
+                            {statusInfo.isSystemEvent ? 'Detail' : 
+                             statusInfo.buttonDisabled ? 'Selesai' : 'Aksi'}
                           </span>
                         </button>
                       </div>

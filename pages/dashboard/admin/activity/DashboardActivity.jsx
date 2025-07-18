@@ -63,7 +63,7 @@ function DashboardActivity({ user, profile }) {
     { 
       title: "Aktivitas", 
       icon: <IconActivity />, 
-      onClick: () => router.push('/dashboard/admin/DashboardActivity')
+      onClick: () => router.push('/dashboard/admin/activity/DashboardActivity')
     },
     // { 
     //   title: "Pengumuman", 

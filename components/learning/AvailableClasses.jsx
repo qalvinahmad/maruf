@@ -13,26 +13,71 @@ const AvailableClasses = () => {
   const [hoveredClass, setHoveredClass] = useState(null);
   const [selectedClass, setSelectedClass] = useState(null);
 
-  // Fetch classes from database
+  // Fetch classes from database with sections and progress data
   useEffect(() => {
     const fetchClasses = async () => {
       try {
         setLoading(true);
         console.log('Fetching classes from database...');
         
-        const { data: classData, error } = await supabase
-          .from('class')
-          .select('*')
+        // Fetch classes data
+        const { data: classData, error: classError } = await supabase
+          .from('classes')
+          .select(`
+            *,
+            class_sections (
+              id,
+              section_order,
+              title,
+              duration_minutes
+            ),
+            class_quizzes (
+              id,
+              title,
+              passing_score,
+              max_attempts,
+              time_limit_minutes
+            )
+          `)
+          .eq('status', 'Aktif')
           .order('id', { ascending: true });
 
-        if (error) {
-          console.error('Error fetching classes:', error);
-          setError(error.message);
+        if (classError) {
+          console.error('Error fetching classes:', classError);
+          setError(classError.message);
           return;
         }
 
-        console.log('Classes fetched:', classData);
-        setClasses(classData || []);
+        // Fetch user progress if authenticated
+        let userProgress = [];
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (user) {
+          const { data: progressData, error: progressError } = await supabase
+            .from('user_class_progress')
+            .select('*')
+            .eq('user_id', user.id);
+
+          if (progressError) {
+            console.warn('Error fetching user progress:', progressError);
+          } else {
+            userProgress = progressData || [];
+          }
+        }
+
+        // Combine class data with user progress
+        const enrichedClasses = (classData || []).map(classItem => {
+          const progress = userProgress.find(p => p.class_id === classItem.id);
+          return {
+            ...classItem,
+            userProgress: progress || null,
+            totalSections: classItem.class_sections?.length || 0,
+            hasQuiz: classItem.class_quizzes?.length > 0
+          };
+        });
+
+        console.log('Classes fetched with progress:', enrichedClasses);
+        setClasses(enrichedClasses);
       } catch (err) {
         console.error('Unexpected error:', err);
         setError('Failed to load classes');
@@ -44,9 +89,10 @@ const AvailableClasses = () => {
     fetchClasses();
   }, []);
 
-  // Enhanced level styling with modern gradients
+  // Enhanced level styling with modern gradients - use actual level from database
   const getLevelStyle = (level) => {
-    switch (level) {
+    const normalizedLevel = level || 'Pemula';
+    switch (normalizedLevel) {
       case 'Pemula': return {
         gradient: 'from-emerald-500 via-green-500 to-teal-600',
         badge: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -74,22 +120,49 @@ const AvailableClasses = () => {
     }
   };
 
-  // Enhanced class progression logic
-  const getClassProgress = (classId) => {
-    // Simplified progress calculation
-    const userProgress = localStorage.getItem('classProgress');
-    const progress = userProgress ? JSON.parse(userProgress) : {};
-    return progress[classId] || 0;
+  // Enhanced class progression logic - use database progress
+  const getClassProgress = (classItem) => {
+    if (classItem.userProgress) {
+      return classItem.userProgress.progress_percentage || 0;
+    }
+    return 0;
   };
 
-  // Enhanced lock status with better UX logic
+  // Enhanced lock status with database-driven logic
   const getClassStatus = (classItem) => {
-    const progress = getClassProgress(classItem.id);
-    const isCompleted = progress >= 100;
-    const isAvailable = classItem.id === 1 || getClassProgress(classItem.id - 1) >= 100;
-    const isLocked = !isAvailable;
+    const progress = getClassProgress(classItem);
+    const isCompleted = classItem.userProgress?.status === 'completed' || progress >= 100;
     
-    return { isCompleted, isAvailable, isLocked, progress };
+    // Class 1 is always available, others require previous class completion
+    let isAvailable = classItem.id === 1;
+    
+    if (classItem.id > 1) {
+      // Check if previous class is completed
+      const previousClass = classes.find(c => c.id === classItem.id - 1);
+      if (previousClass && previousClass.userProgress) {
+        isAvailable = previousClass.userProgress.status === 'completed' || 
+                     (previousClass.userProgress.progress_percentage || 0) >= 100;
+      }
+    }
+    
+    const isLocked = !isAvailable;
+    const isInProgress = classItem.userProgress?.status === 'in_progress';
+    
+    return { isCompleted, isAvailable, isLocked, progress, isInProgress };
+  };
+
+  // Handle class navigation
+  const handleClassClick = (classItem) => {
+    const { isLocked } = getClassStatus(classItem);
+    
+    if (isLocked) {
+      // Show locked message
+      alert(`Selesaikan kelas "${classes.find(c => c.id === classItem.id - 1)?.classname}" terlebih dahulu untuk membuka kelas ini.`);
+      return;
+    }
+    
+    // Navigate to class detail page
+    window.location.href = `/dashboard/kelas/${classItem.id}`;
   };
 
   // Filter and sort classes with enhanced logic
@@ -100,14 +173,15 @@ const AvailableClasses = () => {
     if (searchTerm) {
       filtered = filtered.filter(cls => 
         cls.classname?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cls.teacher?.toLowerCase().includes(searchTerm.toLowerCase())
+        cls.teacher?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        cls.description?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Level filter
+    // Level filter - use actual level from database
     if (levelFilter !== 'all') {
       filtered = filtered.filter(cls => {
-        const level = getClassLevel(cls.id, cls.durationweeks);
+        const level = cls.level || 'Pemula';
         return level.toLowerCase() === levelFilter;
       });
     }
@@ -115,28 +189,28 @@ const AvailableClasses = () => {
     // Sort classes
     switch (sortBy) {
       case 'popular':
-        filtered = [...filtered].sort((a, b) => b.points - a.points);
+        filtered = [...filtered].sort((a, b) => (b.points || 0) - (a.points || 0));
         break;
       case 'shortest':
-        filtered = [...filtered].sort((a, b) => a.durationweeks - b.durationweeks);
+        filtered = [...filtered].sort((a, b) => (a.durationweeks || 0) - (b.durationweeks || 0));
         break;
       case 'difficulty':
-        filtered = [...filtered].sort((a, b) => a.id - b.id);
+        // Sort by level and then by id
+        const levelOrder = { 'Pemula': 1, 'Menengah': 2, 'Lanjutan': 3 };
+        filtered = [...filtered].sort((a, b) => {
+          const levelA = levelOrder[a.level] || 1;
+          const levelB = levelOrder[b.level] || 1;
+          if (levelA !== levelB) return levelA - levelB;
+          return a.id - b.id;
+        });
         break;
       case 'newest':
       default:
-        filtered = [...filtered].sort((a, b) => b.id - a.id);
+        filtered = [...filtered].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
         break;
     }
 
     return filtered;
-  };
-
-  // Get class level based on duration and ID
-  const getClassLevel = (classId, durationWeeks) => {
-    if (durationWeeks <= 2) return 'Pemula';
-    if (durationWeeks <= 4) return 'Menengah';
-    return 'Lanjutan';
   };
 
   if (loading) {
@@ -272,9 +346,9 @@ const AvailableClasses = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <AnimatePresence mode="popLayout">
           {getFilteredClasses().map((classItem, index) => {
-            const level = getClassLevel(classItem.id, classItem.durationweeks);
+            const level = classItem.level || 'Pemula';
             const levelStyle = getLevelStyle(level);
-            const { isLocked, isCompleted, isAvailable, progress } = getClassStatus(classItem);
+            const { isLocked, isCompleted, isAvailable, progress, isInProgress } = getClassStatus(classItem);
             
             return (
               <motion.div 
@@ -289,11 +363,12 @@ const AvailableClasses = () => {
                   layout: { duration: 0.3 }
                 }}
                 whileHover={{ 
-                  y: -8,
+                  y: isLocked ? 0 : -8,
                   transition: { duration: 0.2 }
                 }}
                 onHoverStart={() => setHoveredClass(classItem.id)}
                 onHoverEnd={() => setHoveredClass(null)}
+                onClick={() => handleClassClick(classItem)}
                 className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-300 cursor-pointer group ${
                   isLocked 
                     ? 'bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200 opacity-75' 
@@ -303,7 +378,7 @@ const AvailableClasses = () => {
                 }`}
               >
                 {/* Enhanced Header Image/Banner */}
-                <div className={`h-48 relative overflow-hidden bg-gradient-to-br ${levelStyle.gradient}`}>
+                <div className={`h-48 relative overflow-hidden bg-gradient-to-br ${levelStyle.gradient} ${isCompleted ? 'opacity-70' : ''}`}>
                   {/* Floating particles */}
                   <div className="absolute inset-0 overflow-hidden pointer-events-none">
                     {[...Array(3)].map((_, i) => (
@@ -331,13 +406,18 @@ const AvailableClasses = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent"></div>
                   
                   {/* Status Badges */}
-                  <div className="absolute top-4 left-4 flex gap-2">
+                  <div className="absolute top-4 left-4 flex gap-2 flex-wrap">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg ${levelStyle.gradient.includes('emerald') ? 'bg-emerald-600' : levelStyle.gradient.includes('amber') ? 'bg-amber-600' : 'bg-red-600'}`}>
                       {level}
                     </span>
                     {isCompleted && (
                       <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-600 text-white shadow-lg">
                         ✓ Selesai
+                      </span>
+                    )}
+                    {isInProgress && !isCompleted && (
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white shadow-lg">
+                        📚 Sedang Belajar
                       </span>
                     )}
                     {isLocked && (
@@ -359,16 +439,24 @@ const AvailableClasses = () => {
                           <IconBolt size={16} className="drop-shadow-sm" />
                           <span className="font-medium">{classItem.energy} energi</span>
                         </div>
+                        {classItem.totalSections > 0 && (
+                          <div className="flex items-center gap-1">
+                            <IconBookmark size={16} className="drop-shadow-sm" />
+                            <span className="font-medium">{classItem.totalSections} materi</span>
+                          </div>
+                        )}
                       </div>
                       
-                      {/* Bookmark button */}
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-white/30 transition-colors"
-                      >
-                        <IconBookmark size={14} />
-                      </motion.button>
+                      {/* Quiz indicator */}
+                      {classItem.hasQuiz && (
+                        <motion.div
+                          whileHover={{ scale: 1.1 }}
+                          className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"
+                          title="Memiliki kuis"
+                        >
+                          <IconAward size={14} />
+                        </motion.div>
+                      )}
                     </div>
                   </div>
 
@@ -377,7 +465,9 @@ const AvailableClasses = () => {
                     <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center backdrop-blur-sm">
                       <div className="text-center text-white">
                         <IconShield size={32} className="mx-auto mb-2 opacity-80" />
-                        <div className="text-sm font-semibold">Selesaikan Kelas #{classItem.id - 1}</div>
+                        <div className="text-sm font-semibold">
+                          Selesaikan kelas sebelumnya
+                        </div>
                         <div className="text-xs opacity-80 mt-1">untuk membuka kelas ini</div>
                       </div>
                     </div>
@@ -385,12 +475,17 @@ const AvailableClasses = () => {
                 </div>
 
                 {/* Enhanced Content Section */}
-                <div className="p-6 space-y-4">
+                <div className={`p-6 space-y-4 ${isCompleted ? 'opacity-70' : ''}`}>
                   {/* Title and Progress */}
                   <div>
                     <h3 className={`font-bold text-xl mb-2 leading-tight ${isLocked ? 'text-slate-600' : 'text-slate-900'}`}>
                       {classItem.classname}
                     </h3>
+                    
+                    {/* Description */}
+                    <p className={`text-sm leading-relaxed mb-3 ${isLocked ? 'text-slate-500' : 'text-slate-600'}`}>
+                      {classItem.description}
+                    </p>
                     
                     {/* Progress Bar (if started) */}
                     {progress > 0 && (
@@ -495,11 +590,18 @@ const AvailableClasses = () => {
                   </div>
                 </div>
 
+                {/* Completed overlay */}
+                {isCompleted && (
+                  <div className="absolute inset-0 bg-green-500/10 pointer-events-none" />
+                )}
+
                 {/* Hover Effect Overlay */}
-                <motion.div
-                  className="absolute inset-0 bg-gradient-to-t from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                  initial={false}
-                />
+                {!isLocked && (
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-t from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                    initial={false}
+                  />
+                )}
               </motion.div>
             );
           })}

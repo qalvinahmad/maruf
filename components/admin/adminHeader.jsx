@@ -10,6 +10,41 @@ const AdminHeader = ({ userName, onLogout }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notificationCount, setNotificationCount] = useState(3);
 
+  // Enhanced logout function with proper cleanup
+  const handleLogout = async () => {
+    try {
+      // Call the parent logout function first (it has the navigation logic)
+      if (onLogout && typeof onLogout === 'function') {
+        await onLogout();
+      } else {
+        // Fallback logout implementation if no parent function is provided
+        const { error } = await supabase.auth.signOut();
+        
+        if (error) {
+          console.error('Error during logout:', error);
+        }
+        
+        // Clear local storage
+        localStorage.removeItem('isAdmin');
+        localStorage.removeItem('isLoggedIn');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('userName');
+        
+        // Redirect to login page
+        window.location.href = '/authentication/admin/loginAdmin';
+      }
+      
+      // Clear local state
+      setAdminProfile(null);
+      setIsLoading(false);
+      
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback: still try to redirect
+      window.location.href = '/authentication/admin/loginAdmin';
+    }
+  };
+
   // Fetch admin profile data with enhanced UX feedback
   const fetchAdminProfile = async () => {
     try {
@@ -147,7 +182,7 @@ const AdminHeader = ({ userName, onLogout }) => {
                     {displayName}
                   </h2>
                   
-                  {/* Role badge with consistent design language */}
+                  {/* Combined Role and Level badge with better design */}
                   {adminProfile?.role && (
                     <motion.span 
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm shadow-sm ${getRoleColor(adminProfile.role)}`}
@@ -156,11 +191,17 @@ const AdminHeader = ({ userName, onLogout }) => {
                     >
                       <IconUser size={8} />
                       {adminProfile.role}
+                      {adminProfile.admin_level && (
+                        <>
+                          <span className="text-current/60">·</span>
+                          <span className="capitalize">{adminProfile.admin_level}</span>
+                        </>
+                      )}
                     </motion.span>
                   )}
                 </div>
                 
-                {/* Secondary info: Status and level badges with logical grouping */}
+                {/* Secondary info: Status indicator only */}
                 <div className="flex items-center gap-3 text-xs">
                   
                   {/* Status indicator with semantic colors */}
@@ -174,15 +215,6 @@ const AdminHeader = ({ userName, onLogout }) => {
                       {isActiveUser ? 'Aktif' : 'Tidak Aktif'}
                     </span>
                   </span>
-                  
-
-                  
-{adminProfile?.admin_level && (
-  <span>
-    {adminProfile.admin_level}
-  </span>
-)}
-
                 </div>
               </div>
             </div>
@@ -193,11 +225,11 @@ const AdminHeader = ({ userName, onLogout }) => {
     
               
               
-              {/* Logout button with clear affordance */}
+              {/* Enhanced logout button with proper functionality */}
               <motion.button 
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/60 backdrop-blur-sm border border-white/40 hover:bg-white/80 hover:border-white/60 text-slate-600 hover:text-slate-800 transition-all duration-300 shadow-sm hover:shadow-md group"
                 title="Keluar dari Sistem"
               >

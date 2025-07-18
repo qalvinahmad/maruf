@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "supabase": {
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase@latest", "--read-only", "--project-ref=luiidomyeinydwttqrmc", "--access-token=sbp_ae0301094467b32b92eeb75c62621ece95a4df58"],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_ae0301094467b32b92eeb75c62621ece95a4df58",
+        "SUPABASE_URL": "https://luiidomyeinydwttqrmc.supabase.co",
+        "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1aWlkb215ZWlueWR3dHRxcm1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2MTMwMDcsImV4cCI6MjA2MjE4OTAwN30.Lqoo6AoqYnGwjA4bAXI618Bf17PYqjiw-Rnm5ON6WQQ"
+      }
+    }
+  }
+}

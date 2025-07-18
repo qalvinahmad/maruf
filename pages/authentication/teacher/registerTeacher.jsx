@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
+import { showToast, Toast } from '../../../components/ui/toast';
 import { supabase } from '../../../lib/supabaseClient';
 
 const pageVariants = {
@@ -38,20 +39,43 @@ export default function RegisterTeacher() {
     let createdUser = null;
 
     try {
+      // Validate passwords match
+      if (formData.password !== formData.confirmPassword) {
+        throw new Error('Password dan konfirmasi password tidak cocok');
+      }
+
+      // Validate password strength
+      if (formData.password.length < 6) {
+        throw new Error('Password minimal 6 karakter');
+      }
+
       // Check if verification already exists
-      const { data: existingVerification } = await supabase
+      const { data: existingVerification, error: checkError } = await supabase
         .from('teacher_verifications')
-        .select('email')
+        .select('email, status')
         .eq('email', formData.email.trim())
         .single();
 
-      if (existingVerification) {
-        throw new Error('Email ini sudah mengajukan verifikasi sebelumnya');
+      if (existingVerification && !checkError) {
+        if (existingVerification.status === 'pending') {
+          showToast.warning('Email ini sudah mengajukan verifikasi dan sedang menunggu persetujuan admin.');
+          throw new Error('Email ini sudah mengajukan verifikasi dan sedang menunggu persetujuan admin.');
+        } else if (existingVerification.status === 'verified') {
+          showToast.info('Email ini sudah terverifikasi. Silakan langsung login.');
+          // Don't throw error, instead redirect to login
+          setTimeout(() => {
+            router.push('/authentication/teacher/loginTeacher');
+          }, 2000);
+          return; // Exit the function
+        } else if (existingVerification.status === 'rejected') {
+          showToast.error('Email ini pernah ditolak verifikasinya. Silakan hubungi administrator.');
+          throw new Error('Email ini pernah ditolak verifikasinya. Silakan hubungi administrator.');
+        }
       }
 
       // Create auth user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.trim(),
         password: formData.password,
         options: {
           data: {
@@ -61,8 +85,16 @@ export default function RegisterTeacher() {
         }
       });
 
-      if (signUpError) throw signUpError;
-      if (!authData?.user?.id) throw new Error('Failed to create user account');
+      if (signUpError) {
+        if (signUpError.message.includes('User already registered')) {
+          throw new Error('Email sudah terdaftar. Silakan gunakan email lain atau login.');
+        }
+        throw signUpError;
+      }
+      
+      if (!authData?.user?.id) {
+        throw new Error('Gagal membuat akun pengguna');
+      }
 
       createdUser = authData.user;
 
@@ -79,18 +111,58 @@ export default function RegisterTeacher() {
           credentials: {
             education: formData.credentials.education,
             teaching_experience: formData.teachingExperience,
-            specializations: [formData.specialization]
+            specializations: [formData.specialization],
+            certifications: formData.certifications || ''
           }
         }]);
 
-      if (verificationError) throw verificationError;
+      if (verificationError) {
+        console.error('Verification error:', verificationError);
+        throw new Error('Gagal menyimpan data verifikasi');
+      }
 
-      alert('Pendaftaran berhasil! Silakan tunggu verifikasi admin.');
-      router.push('/authentication/teacher/loginTeacher');
+      // Create teacher profile (but not verified yet)
+      const { error: profileError } = await supabase
+        .from('teacher_profiles')
+        .insert([{
+          id: createdUser.id,
+          email: formData.email.trim(),
+          full_name: formData.fullName,
+          teaching_experience: formData.teachingExperience,
+          institution: formData.institution,
+          specialization: formData.specialization,
+          certifications: formData.certifications || '',
+          is_verified: false,
+          status: 'pending'
+        }]);
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // Don't fail the registration for this, as verification record is more important
+      }
+
+      // Sign out the user as they need to wait for verification
+      await supabase.auth.signOut();
+
+      showToast.success('Pendaftaran berhasil! Silakan tunggu verifikasi admin sebelum dapat login.');
+      
+      setTimeout(() => {
+        router.push('/authentication/teacher/loginTeacher');
+      }, 2000);
 
     } catch (error) {
       console.error('Registration Error:', error);
-      setError(error.message);
+      
+      let errorMessage = error.message || 'Terjadi kesalahan saat registrasi';
+      
+      // Don't show duplicate toast for errors that already showed toast
+      if (!error.message.includes('sudah mengajukan verifikasi') && 
+          !error.message.includes('sudah terverifikasi') && 
+          !error.message.includes('pernah ditolak')) {
+        showToast.error(errorMessage);
+      }
+      
+      setError(errorMessage);
 
       // Cleanup if needed
       if (createdUser?.id) {
@@ -100,12 +172,72 @@ export default function RegisterTeacher() {
             .from('teacher_verifications')
             .delete()
             .eq('id', createdUser.id);
+          await supabase
+            .from('teacher_profiles')
+            .delete()
+            .eq('id', createdUser.id);
         } catch (cleanupError) {
           console.error('Cleanup error:', cleanupError);
         }
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper function to create missing teacher profile
+  const createMissingTeacherProfile = async (email) => {
+    try {
+      showToast.info('Creating missing teacher profile...');
+
+      // Get verification data
+      const { data: verificationData, error: verificationError } = await supabase
+        .from('teacher_verifications')
+        .select('*')
+        .eq('email', email)
+        .eq('status', 'verified')
+        .single();
+
+      if (verificationError || !verificationData) {
+        throw new Error('Verification data not found or not verified');
+      }
+
+      // Get user ID from auth
+      const { data: { users }, error: userError } = await supabase.auth.admin.listUsers();
+      const authUser = users?.find(user => user.email === email);
+
+      if (!authUser) {
+        throw new Error('Auth user not found');
+      }
+
+      // Create teacher profile
+      const { data: newProfile, error: createError } = await supabase
+        .from('teacher_profiles')
+        .insert([{
+          id: authUser.id,
+          email: verificationData.email,
+          full_name: verificationData.full_name,
+          teaching_experience: verificationData.credentials?.teaching_experience || 'N/A',
+          institution: verificationData.institution,
+          specialization: verificationData.credentials?.specializations?.join(', ') || 'N/A',
+          certifications: verificationData.credentials?.certifications || '',
+          is_verified: true,
+          status: 'pending' // Use 'pending' instead of 'verified'
+        }])
+        .select()
+        .single();
+
+      if (createError) {
+        throw createError;
+      }
+
+      showToast.success('Teacher profile created successfully!');
+      return newProfile;
+
+    } catch (error) {
+      console.error('Create profile error:', error);
+      showToast.error(`Failed to create profile: ${error.message}`);
+      return null;
     }
   };
 
@@ -120,6 +252,8 @@ export default function RegisterTeacher() {
       <Head>
         <title>Registrasi Guru | Makruf</title>
       </Head>
+
+      <Toast />
 
       <motion.div
         className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl"
@@ -291,15 +425,40 @@ export default function RegisterTeacher() {
               {loading ? 'Memproses...' : 'Daftar & Ajukan Verifikasi'}
             </button>
           </div>
+
+          {/* Debug buttons - Remove in production */}
+          <div className="md:col-span-2 space-y-2">
+            <div className="border-t pt-4">
+              <p className="text-sm text-gray-500 mb-2">Debug Tools:</p>
+              <button
+                type="button"
+                onClick={() => createMissingTeacherProfile(formData.email || 'qalvinahmad@gmail.com')}
+                className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
+                Debug: Create Missing Profile
+              </button>
+            </div>
+          </div>
         </form>
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => router.push('/authentication/login')}
-            className="text-blue-600 hover:underline text-sm"
-          >
-            Kembali ke halaman login
-          </button>
+        <div className="mt-6 text-center space-y-3">
+          <p className="text-gray-600 text-sm">
+            Sudah memiliki akun guru?{' '}
+            <button
+              onClick={() => router.push('/authentication/teacher/loginTeacher')}
+              className="text-blue-600 hover:underline font-medium"
+            >
+              Login di sini
+            </button>
+          </p>
+          <div className="border-t pt-3">
+            <button
+              onClick={() => router.push('/authentication/login')}
+              className="text-gray-500 hover:text-gray-700 hover:underline text-sm"
+            >
+              ← Kembali ke halaman login utama
+            </button>
+          </div>
         </div>
       </motion.div>
     </motion.div>

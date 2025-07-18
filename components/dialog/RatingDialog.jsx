@@ -1,7 +1,8 @@
 import { IconStar, IconX } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { getDefaultRewardConfig, getRatingRewardConfig, submitRatingWithReward } from '../../lib/ratingRewardConfig';
 import { supabase } from '../../lib/supabaseClient';
 
 const RatingDialog = ({ isOpen, onClose, onSkip, onSubmit }) => {
@@ -10,6 +11,23 @@ const RatingDialog = ({ isOpen, onClose, onSkip, onSubmit }) => {
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rewardConfig, setRewardConfig] = useState(getDefaultRewardConfig());
+
+  // Load reward configuration from database
+  useEffect(() => {
+    const loadRewardConfig = async () => {
+      if (isOpen) {
+        const config = await getRatingRewardConfig();
+        setRewardConfig(config);
+      }
+    };
+    
+    loadRewardConfig();
+  }, [isOpen]);
+
+  const getRewardPoints = (ratingValue) => {
+    return rewardConfig[ratingValue]?.points || 0;
+  };
 
   const handleSubmitRating = async () => {
     if (rating === 0) {
@@ -19,60 +37,48 @@ const RatingDialog = ({ isOpen, onClose, onSkip, onSubmit }) => {
 
     try {
       setIsSubmitting(true);
+      
+      const rewardPoints = getRewardPoints(rating);
 
-      // Try API endpoint first
-      try {
-        const response = await fetch('/api/submit-rating', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            user_id: user.id,
-            rating: rating,
-            comment: comment.trim() || null
-          }),
-        });
+      // Use utility function for better handling
+      const result = await submitRatingWithReward({
+        user_id: user.id,
+        rating: rating,
+        comment: comment.trim() || null,
+        reward_points: rewardPoints
+      });
 
-        const result = await response.json();
-
-        if (response.ok && result.success) {
-          console.log('Rating submitted via API:', result);
-          alert('Terima kasih atas rating Anda!');
-          
-          // Mark as rated in localStorage
-          localStorage.setItem(`user_rated_${user.id}`, 'true');
-          
-          if (onSubmit) onSubmit(rating, comment);
-          handleClose();
-          return;
-        } else {
-          console.error('API Error:', result);
-        }
-      } catch (apiError) {
-        console.error('API submission failed:', apiError);
+      if (result.success) {
+        alert(`Terima kasih atas rating Anda! Anda mendapat ${rewardPoints} poin reward.`);
+        
+        // Mark as rated in localStorage
+        localStorage.setItem(`user_rated_${user.id}`, 'true');
+        
+        if (onSubmit) onSubmit(rating, comment, rewardPoints);
+        handleClose();
+        return;
       }
 
-      // Fallback to direct Supabase insert
+      // Fallback if utility function fails
       const { data, error } = await supabase
         .from('rating')
         .insert([
           {
             user_id: user.id,
             rating: rating,
-            comment: comment.trim() || null
+            comment: comment.trim() || null,
+            reward_points: rewardPoints
           }
         ]);
 
       if (error) {
-        console.error('Direct insert error:', error);
-        
         // Emergency fallback - save to localStorage
         const ratingData = {
           id: Date.now(),
           user_id: user.id,
           rating: rating,
           comment: comment.trim() || null,
+          reward_points: rewardPoints,
           created_at: new Date().toISOString(),
           status: 'pending_local'
         };
@@ -80,18 +86,22 @@ const RatingDialog = ({ isOpen, onClose, onSkip, onSubmit }) => {
         localStorage.setItem(`rating_${Date.now()}`, JSON.stringify(ratingData));
         alert('Rating tersimpan lokal. Akan dikirim saat koneksi database tersedia.');
       } else {
-        console.log('Rating submitted successfully:', data);
-        alert('Terima kasih atas rating Anda!');
+        // Award points to user
+        await supabase.rpc('increment_user_points', {
+          user_id_param: user.id,
+          points_to_add: rewardPoints
+        });
+          
+        alert(`Terima kasih atas rating Anda! Anda mendapat ${rewardPoints} poin reward.`);
       }
 
       // Mark as rated in localStorage
       localStorage.setItem(`user_rated_${user.id}`, 'true');
       
-      if (onSubmit) onSubmit(rating, comment);
+      if (onSubmit) onSubmit(rating, comment, rewardPoints);
       handleClose();
 
     } catch (error) {
-      console.error('Error submitting rating:', error);
       alert('Terjadi kesalahan saat mengirim rating. Silakan coba lagi.');
     } finally {
       setIsSubmitting(false);
@@ -226,6 +236,18 @@ const RatingDialog = ({ isOpen, onClose, onSkip, onSubmit }) => {
                   <span className={`font-semibold text-lg ${getRatingColor(hoveredRating || rating)}`}>
                     {getRatingText(hoveredRating || rating)}
                   </span>
+                  {(hoveredRating || rating) > 0 && (
+                    <motion.div 
+                      className="mt-2 text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 inline-block"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      🎁 Reward: <span className="font-semibold text-yellow-600">
+                        {getRewardPoints(hoveredRating || rating)} poin
+                      </span>
+                    </motion.div>
+                  )}
                 </div>
               </div>
 

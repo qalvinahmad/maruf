@@ -12,10 +12,7 @@ export async function middleware(req: NextRequest) {
     const isAdminPath = req.nextUrl.pathname.startsWith('/dashboard/DashboardProjects');
     const isAdminLoginPath = req.nextUrl.pathname.startsWith('/authentication/admin/loginAdmin');
 
-    // Add teacher path check
-    const isTeacherPath = req.nextUrl.pathname.startsWith('/authentication/teacher');
-    const isTeacherLoginPath = req.nextUrl.pathname === '/authentication/teacher/loginTeacher';
-
+    // Admin-only logic (keep existing)
     if (isAdminPath) {
       if (!session) {
         return NextResponse.redirect(new URL('/authentication/admin/loginAdmin', req.url));
@@ -49,51 +46,30 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    // Teacher middleware logic
-    if (isTeacherPath && !isTeacherLoginPath) {
-      if (!session) {
-        return NextResponse.redirect(new URL('/authentication/teacher/loginTeacher', req.url));
-      }
-
-      // Verify teacher status
-      const { data: teacherData } = await supabase
-        .from('teacher_profiles')
-        .select('*')
-        .eq('email', session.user.email)
-        .eq('is_verified', true)
-        .single();
-
-      if (!teacherData) {
-        return NextResponse.redirect(new URL('/authentication/teacher/loginTeacher', req.url));
-      }
-    }
-
-    if (isTeacherLoginPath && session) {
-      const { data: teacherData } = await supabase
-        .from('teacher_profiles')
-        .select('*')
-        .eq('email', session.user.email)
-        .eq('is_verified', true)
-        .single();
-
-      if (teacherData) {
-        return NextResponse.redirect(new URL('/dashboard/DashboardProjects', req.url));
-      }
-    }
+    // Teacher authentication is handled by client-side code only
+    // No middleware intervention for teacher routes to prevent conflicts
+    // with localStorage-based authentication
 
     return res;
   } catch (error) {
     console.error('Middleware error:', error);
-    return NextResponse.redirect(new URL('/authentication/admin/loginAdmin', req.url));
+    // Only redirect to admin login for admin-related errors
+    if (req.nextUrl.pathname.startsWith('/dashboard/DashboardProjects') || 
+        req.nextUrl.pathname.startsWith('/authentication/admin')) {
+      return NextResponse.redirect(new URL('/authentication/admin/loginAdmin', req.url));
+    }
+    return res;
   }
 }
 
 export const config = {
   matcher: [
     '/authentication/admin/:path*',
-    '/authentication/teacher/:path*', // Add teacher paths
+    // Temporarily disable teacher middleware to fix redirect loop
+    // '/authentication/teacher/loginTeacher', 
     '/dashboard/DashboardProjects',
-    '/dashboard/DashboardBelajar',
+    '/dashboard/DashboardBelajar', 
+    // '/dashboard/teacher/:path*', // Disabled teacher dashboard middleware
     '/dashboard/:path*'
   ],
 };

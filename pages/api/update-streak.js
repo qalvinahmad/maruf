@@ -1,4 +1,10 @@
-import { supabase } from '../../lib/supabaseClient';
+import { createClient } from '@supabase/supabase-js';
+
+// Use service role key for admin operations
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -18,17 +24,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Ambil profil pengguna saat ini
-    const { data: profile, error: fetchError } = await supabase
+    // Ambil profil pengguna saat ini dengan handling untuk multiple/no rows
+    const { data: profiles, error: fetchError } = await supabaseAdmin
       .from('profiles')
-      .select('streak, updated_at')
-      .eq('id', userId)
-      .single();
+      .select('streak, updated_at, energy')
+      .eq('id', userId);
 
     if (fetchError) {
       console.error('Error fetching profile:', fetchError);
       throw new Error(`Failed to fetch user profile: ${fetchError.message}`);
     }
+
+    if (!profiles || profiles.length === 0) {
+      throw new Error('User profile not found');
+    }
+
+    if (profiles.length > 1) {
+      console.warn(`Multiple profiles found for user ${userId}, using first one`);
+    }
+
+    const profile = profiles[0];
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -52,6 +67,7 @@ export default async function handler(req, res) {
           alreadyLoggedInToday: true,
           data: {
             streak: profile.streak || 0,
+            energy: profile.energy || 0,
             streakBroken: false,
             lastLoginDate: profile.updated_at
           }
@@ -63,28 +79,47 @@ export default async function handler(req, res) {
       }
     }
 
-    // Perbarui profil dengan streak baru
-    const { data, error: updateError } = await supabase
+    // Perbarui profil dengan streak baru DAN energy +1 setiap hari
+    const currentEnergy = profile.energy || 0;
+    const newEnergy = Math.min(currentEnergy + 1, 10); // Cap at 10 energy
+
+    const { data, error: updateError } = await supabaseAdmin
       .from('profiles')
       .update({
         streak: newStreak,
+        energy: newEnergy,
         updated_at: now.toISOString()
       })
       .eq('id', userId)
-      .select()
-      .single();
+      .select('*');
 
     if (updateError) {
       console.error('Error updating profile:', updateError);
       throw new Error(`Failed to update profile: ${updateError.message}`);
     }
 
+    if (!data || data.length === 0) {
+      console.error('No data returned from update. User ID:', userId);
+      throw new Error('No data returned from update - user might not exist');
+    }
+
+    const updatedProfile = data[0]; // Get first result
+    
+    console.log('Profile updated successfully:', {
+      userId,
+      oldStreak: profile.streak,
+      newStreak: updatedProfile.streak,
+      oldEnergy: profile.energy,
+      newEnergy: updatedProfile.energy
+    });
+
     return res.status(200).json({
       success: true,
       data: {
-        streak: data.streak,
+        streak: updatedProfile.streak,
+        energy: updatedProfile.energy,
         streakBroken,
-        lastLoginDate: data.updated_at
+        lastLoginDate: updatedProfile.updated_at
       }
     });
 

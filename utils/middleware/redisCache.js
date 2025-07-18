@@ -217,6 +217,220 @@ const searchText = (index, query, callback) => {
   });
 };
 
+// Simple in-memory cache fallback when Redis is not available
+class MemoryCache {
+  constructor() {
+    this.cache = new Map();
+    this.ttl = new Map();
+  }
+
+  set(key, value, ttlSeconds = 300) {
+    this.cache.set(key, value);
+    if (ttlSeconds > 0) {
+      const expireTime = Date.now() + (ttlSeconds * 1000);
+      this.ttl.set(key, expireTime);
+    }
+    return Promise.resolve('OK');
+  }
+
+  get(key) {
+    // Check if key has expired
+    if (this.ttl.has(key)) {
+      const expireTime = this.ttl.get(key);
+      if (Date.now() > expireTime) {
+        this.cache.delete(key);
+        this.ttl.delete(key);
+        return Promise.resolve(null);
+      }
+    }
+    
+    const value = this.cache.get(key) || null;
+    return Promise.resolve(value);
+  }
+
+  del(key) {
+    this.cache.delete(key);
+    this.ttl.delete(key);
+    return Promise.resolve(1);
+  }
+
+  exists(key) {
+    return Promise.resolve(this.cache.has(key) ? 1 : 0);
+  }
+
+  flushall() {
+    this.cache.clear();
+    this.ttl.clear();
+    return Promise.resolve('OK');
+  }
+}
+
+// Initialize memory cache as fallback
+const memoryCache = new MemoryCache();
+
+// Redis client with fallback
+let redisClient = null;
+let redisInitialized = false;
+
+// ENHANCED: Better Redis initialization with proper environment checks
+async function initRedis() {
+  // Skip Redis initialization in development unless explicitly enabled
+  if (process.env.NODE_ENV === 'development' && !process.env.ENABLE_REDIS_DEV) {
+    if (!process.env.SUPPRESS_REDIS_WARNINGS) {
+      console.log('🔧 Redis disabled in development mode. Using memory cache.');
+    }
+    redisInitialized = true;
+    return;
+  }
+
+  // Only try Redis if URL is provided and we're in production
+  if (!process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
+    console.log('🔧 No Redis URL provided, using memory cache');
+    redisInitialized = true;
+    return;
+  }
+
+  try {
+    // Only try Redis in production or if explicitly enabled
+    if (process.env.NODE_ENV === 'production' && process.env.REDIS_URL) {
+      const { createClient } = require('redis');
+      
+      redisClient = createClient({
+        url: process.env.REDIS_URL,
+        socket: {
+          connectTimeout: 2000, // Reduced timeout
+          commandTimeout: 2000,
+        },
+        retry_unfulfilled_commands: false,
+        // SUPPRESS error logging in development
+        ...(process.env.NODE_ENV === 'development' && {
+          lazyConnect: true
+        })
+      });
+
+      // Suppress error logging in development
+      redisClient.on('error', (err) => {
+        if (process.env.NODE_ENV !== 'development' && !process.env.SUPPRESS_REDIS_WARNINGS) {
+          console.log('Redis connection failed, using memory cache:', err.message);
+        }
+        redisClient = null;
+      });
+
+      redisClient.on('connect', () => {
+        if (!process.env.SUPPRESS_REDIS_WARNINGS) {
+          console.log('✅ Redis connected successfully');
+        }
+      });
+
+      redisClient.on('disconnect', () => {
+        if (!process.env.SUPPRESS_REDIS_WARNINGS) {
+          console.log('⚠️ Redis disconnected, falling back to memory cache');
+        }
+      });
+
+      await redisClient.connect();
+    }
+  } catch (error) {
+    if (!process.env.SUPPRESS_REDIS_WARNINGS) {
+      console.log('Redis initialization failed, using memory cache:', error.message);
+    }
+    redisClient = null;
+  } finally {
+    redisInitialized = true;
+  }
+}
+
+// ENHANCED: Cache interface with better error handling
+export const cache = {
+  async set(key, value, ttlSeconds = 300) {
+    try {
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+      
+      if (redisClient && redisClient.isOpen) {
+        if (ttlSeconds > 0) {
+          return await redisClient.setEx(key, ttlSeconds, stringValue);
+        } else {
+          return await redisClient.set(key, stringValue);
+        }
+      } else {
+        return await memoryCache.set(key, stringValue, ttlSeconds);
+      }
+    } catch (error) {
+      // Silently fall back to memory cache
+      return await memoryCache.set(key, typeof value === 'string' ? value : JSON.stringify(value), ttlSeconds);
+    }
+  },
+
+  async get(key) {
+    try {
+      let value;
+      
+      if (redisClient && redisClient.isOpen) {
+        value = await redisClient.get(key);
+      } else {
+        value = await memoryCache.get(key);
+      }
+      
+      if (!value) return null;
+      
+      // Try to parse JSON, return string if not valid JSON
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    } catch (error) {
+      // Silently fall back to memory cache
+      return await memoryCache.get(key);
+    }
+  },
+
+  async del(key) {
+    try {
+      if (redisClient && redisClient.isOpen) {
+        return await redisClient.del(key);
+      } else {
+        return await memoryCache.del(key);
+      }
+    } catch (error) {
+      return await memoryCache.del(key);
+    }
+  },
+
+  async exists(key) {
+    try {
+      if (redisClient && redisClient.isOpen) {
+        return await redisClient.exists(key);
+      } else {
+        return await memoryCache.exists(key);
+      }
+    } catch (error) {
+      return await memoryCache.exists(key);
+    }
+  },
+
+  async clear() {
+    try {
+      if (redisClient && redisClient.isOpen) {
+        return await redisClient.flushAll();
+      } else {
+        return await memoryCache.flushall();
+      }
+    } catch (error) {
+      return await memoryCache.flushall();
+    }
+  }
+};
+
+// Initialize Redis on import (non-blocking) only if not already done
+if (typeof window === 'undefined' && !redisInitialized) {
+  initRedis().catch(() => {
+    // Silent catch - errors already handled in initRedis
+  });
+}
+
+export default cache;
+
 module.exports = {
   setCache,
   getCache,

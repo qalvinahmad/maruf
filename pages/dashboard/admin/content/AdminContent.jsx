@@ -1,4 +1,4 @@
-import { IconActivity, IconBook, IconChartBar, IconEdit, IconList, IconPlus, IconSettings } from '@tabler/icons-react';
+import { IconActivity, IconBook, IconCalendarEvent, IconChartBar, IconDatabase, IconEdit, IconList, IconPlus, IconSettings, IconShield } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
@@ -117,7 +117,7 @@ const AdminContent = () => {
     { 
       title: "Aktivitas", 
       icon: <IconActivity />, 
-      onClick: () => router.push('/dashboard/admin/DashboardActivity')
+      onClick: () => router.push('/dashboard/admin/activity/DashboardActivity')
     },
     { 
       title: "Admin Panel", 
@@ -1735,36 +1735,36 @@ const AdminContent = () => {
               {/* Menu Admin Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <AdminMenuCard 
+                  icon={<IconDatabase className="text-blue-600" size={20} />}
+                  title="Analisis Data"
+                  description="Analisis penggunaan platform dan rekomendasi perbaikan"
+                  bgColor="bg-white"
+                  onClick={() => router.push('/dashboard/admin/data/AdminData')}
+                  isActive={false}
+                />
+                <AdminMenuCard 
                   icon={<IconBook className="text-green-600" size={20} />}
-                  title="Kelola Tingkatan"
-                  description="Atur level dan sub-pelajaran dalam roadmap pembelajaran"
+                  title="Kelola Konten"
+                  description="Kelola materi, modul, dan konten pembelajaran makhrojul huruf"
                   bgColor="bg-white"
-                  onClick={() => setActiveTab('roadmap')}
-                  isActive={activeTab === 'roadmap'}
+                  onClick={() => router.push('/admin/content/AdminContent')}
+                  isActive={false}
                 />
                 <AdminMenuCard 
-                  icon={<IconList className="text-blue-600" size={20} />}
-                  title="Manajemen Soal"
-                  description="Buat dan kelola bank soal untuk setiap tingkatan"
+                  icon={<IconCalendarEvent className="text-purple-600" size={20} />}
+                  title="Event & Aktivitas"
+                  description="Kelola event dan aktivitas khusus pembelajaran"
                   bgColor="bg-white"
-                  onClick={() => setActiveTab('questions')}
-                  isActive={activeTab === 'questions'}
+                  onClick={() => router.push('/dashboard/admin/event/AdminEvent')}
+                  isActive={false}
                 />
                 <AdminMenuCard 
-                  icon={<IconSettings className="text-purple-600" size={20} />}
-                  title="Pengaturan Akurasi"
-                  description="Atur standar akurasi minimal untuk setiap level"
+                  icon={<IconShield className="text-amber-600" size={20} />}
+                  title="Verifikasi"
+                  description="Verifikasi akun guru dan pengawasan sistem pembelajaran"
                   bgColor="bg-white"
-                  onClick={() => setActiveTab('accuracy')}
-                  isActive={activeTab === 'accuracy'}
-                />
-                <AdminMenuCard 
-                  icon={<IconChartBar className="text-amber-600" size={20} />}
-                  title="Analisis Konten"
-                  description="Lihat performa dan statistik konten pembelajaran"
-                  bgColor="bg-white"
-                  onClick={() => setActiveTab('overview')}
-                  isActive={activeTab === 'overview'}
+                  onClick={() => router.push('/dashboard/admin/verification/AdminVerif')}
+                  isActive={false}
                 />
               </div>
               
