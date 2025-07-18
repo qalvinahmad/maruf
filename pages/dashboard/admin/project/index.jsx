@@ -1,4 +1,4 @@
-import { IconChartBar, IconList, IconReport, IconSettings, IconStar, IconBuilding } from '@tabler/icons-react';
+import { IconBuilding, IconChartBar, IconList, IconReport, IconSettings, IconStar } from '@tabler/icons-react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
