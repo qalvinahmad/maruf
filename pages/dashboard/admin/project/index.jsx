@@ -1,4 +1,4 @@
-import { IconChartBar, IconList, IconReport, IconSettings, IconStar, IconStore } from '@tabler/icons-react';
+import { IconChartBar, IconList, IconReport, IconSettings, IconStar, IconBuilding } from '@tabler/icons-react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
@@ -57,7 +57,7 @@ const AdminProjectDashboard = () => {
     {
       title: 'Project Store',
       description: 'Kelola toko dan item dalam game',
-      icon: IconStore,
+      icon: IconBuilding,
       href: '/dashboard/admin/project/store',
       color: 'bg-purple-500',
       hoverColor: 'hover:bg-purple-600'
