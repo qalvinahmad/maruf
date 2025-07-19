@@ -128,10 +128,8 @@ const CloudflareTurnstile = ({
       }
     };
 
-    // Only initialize if not already loaded or loading
-    if (!isLoaded && !isLoading) {
-      initTurnstile();
-    }
+    // Initialize on mount
+    initTurnstile();
 
     return () => {
       mounted = false;

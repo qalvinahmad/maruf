@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Toast, showToast } from '../../components/ui/toast';
 import { useAuth } from '../../context/AuthContext';
 

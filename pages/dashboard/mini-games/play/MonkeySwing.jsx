@@ -1,682 +1,425 @@
-import { IconArrowLeft } from '@tabler/icons-react';
-import { motion } from 'framer-motion';
-import Head from 'next/head';
-import { useRouter } from 'next/router';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-const MonkeySwing = () => {
-  const router = useRouter();
-  const GAME_WIDTH = 800;
-  const GAME_HEIGHT = 600;
-  const GRAVITY = 0.3;
-  const SWING_POWER = 8;
-  const TREE_DISTANCE = 200;
-  
-  const [monkey, setMonkey] = useState({
-    x: 100,
-    y: 400,
-    vx: 0,
-    vy: 0,
-    isSwinging: false,
-    currentTree: 0,
-    angle: 0,
-    swingRadius: 120
-  });
-  
-  const [trees, setTrees] = useState([]);
-  const [obstacles, setObstacles] = useState([]);
-  const [collectibles, setCollectibles] = useState([]);
-  const [grappleHook, setGrappleHook] = useState(null);
+const GraspGasp = () => {
+  const [gameState, setGameState] = useState('ready');
   const [score, setScore] = useState(0);
-  const [gameOver, setGameOver] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [distance, setDistance] = useState(0);
-  const [particles, setParticles] = useState([]);
+  const [playerX, setPlayerX] = useState(100);
+  const [playerY, setPlayerY] = useState(200);
+  const [velocityX, setVelocityX] = useState(0);
+  const [velocityY, setVelocityY] = useState(0);
+  const [isSwinging, setIsSwinging] = useState(true);
+  const [currentAnchor, setCurrentAnchor] = useState({ x: 100, y: 80 });
+  const [angle, setAngle] = useState(0);
+  const [ropeLength, setRopeLength] = useState(120);
+  const [obstacles, setObstacles] = useState([]);
+  const [stars, setStars] = useState([]);
+  const [anchors, setAnchors] = useState([]);
+  const gameLoopRef = useRef();
 
-  // Initialize trees
+  const GRAVITY = 0.4;
+  const SWING_SPEED = 0.03;
+  const ROPE_THROW_RANGE = 150;
+  const GAME_WIDTH = 400;
+  const GAME_HEIGHT = 600;
+
+  // Initialize game elements
   useEffect(() => {
-    const initialTrees = [];
-    for (let i = 0; i < 20; i++) {
-      initialTrees.push({
-        x: 100 + (i * TREE_DISTANCE),
-        y: 300 + Math.random() * 100,
+    const treeAnchors = [];
+    const initialObstacles = [];
+    const initialStars = [];
+    
+    // Create anchor points on tree branches
+    for (let i = 0; i < 8; i++) {
+      treeAnchors.push({
+        x: 80 + i * 50,
+        y: 80,
         id: i
       });
     }
-    setTrees(initialTrees);
-  }, []);
-
-  // Generate obstacles and collectibles
-  const generateObstacle = useCallback((treeIndex) => {
-    return {
-      x: 100 + (treeIndex * TREE_DISTANCE) + Math.random() * 150,
-      y: 350 + Math.random() * 150,
-      vx: -2 - Math.random() * 3,
-      vy: -1 - Math.random() * 2,
-      id: Math.random(),
-      type: 'banana'
-    };
-  }, []);
-
-  const generateCollectible = useCallback((treeIndex) => {
-    return {
-      x: 100 + (treeIndex * TREE_DISTANCE) + Math.random() * 150,
-      y: 300 + Math.random() * 200,
-      id: Math.random(),
-      collected: false
-    };
-  }, []);
-
-  // Initialize obstacles and collectibles
-  useEffect(() => {
-    if (trees.length > 0) {
-      const newObstacles = [];
-      const newCollectibles = [];
-      
-      for (let i = 2; i < trees.length; i++) {
-        if (Math.random() < 0.4) { // 40% chance for obstacle
-          newObstacles.push(generateObstacle(i));
-        }
-        if (Math.random() < 0.6) { // 60% chance for collectible
-          newCollectibles.push(generateCollectible(i));
-        }
-      }
-      
-      setObstacles(newObstacles);
-      setCollectibles(newCollectibles);
-    }
-  }, [trees, generateObstacle, generateCollectible]);
-
-  // Handle tap/click
-  const handleTap = () => {
-    if (!gameStarted) {
-      setGameStarted(true);
-      return;
-    }
-
-    if (gameOver) {
-      // Restart game
-      setMonkey({
-        x: 100,
-        y: 400,
-        vx: 0,
-        vy: 0,
-        isSwinging: false,
-        currentTree: 0,
-        angle: 0,
-        swingRadius: 120
+    
+    // Create obstacles
+    for (let i = 0; i < 10; i++) {
+      initialObstacles.push({
+        x: 50 + i * 60 + Math.random() * 30,
+        y: 250 + Math.random() * 250,
+        width: 50,
+        height: 15,
+        id: i
       });
-      setGrappleHook(null);
-      setScore(0);
-      setDistance(0);
-      setParticles([]);
-      setGameOver(false);
-      setGameStarted(false);
-      
-      // Regenerate obstacles and collectibles
-      const newObstacles = [];
-      const newCollectibles = [];
-      
-      for (let i = 2; i < trees.length; i++) {
-        if (Math.random() < 0.4) {
-          newObstacles.push(generateObstacle(i));
-        }
-        if (Math.random() < 0.6) {
-          newCollectibles.push(generateCollectible(i));
-        }
-      }
-      
-      setObstacles(newObstacles);
-      setCollectibles(newCollectibles);
-      return;
     }
-
-    if (monkey.isSwinging) {
-      // Release from current tree
-      const currentTree = trees[monkey.currentTree];
-      if (currentTree) {
-        const releaseVx = Math.cos(monkey.angle) * SWING_POWER;
-        const releaseVy = Math.sin(monkey.angle) * SWING_POWER;
-        
-        setMonkey(prev => ({
-          ...prev,
-          isSwinging: false,
-          vx: releaseVx,
-          vy: releaseVy
-        }));
-      }
-    } else if (!grappleHook) {
-      // Shoot grapple hook to nearest tree in front
-      const nearestTree = trees.find(tree => 
-        tree.x > monkey.x && 
-        tree.x < monkey.x + 300 &&
-        Math.abs(tree.y - monkey.y) < 200
-      );
-      
-      if (nearestTree) {
-        setGrappleHook({
-          startX: monkey.x,
-          startY: monkey.y,
-          endX: nearestTree.x,
-          endY: nearestTree.y,
-          targetTree: nearestTree
-        });
-      }
+    
+    // Create stars
+    for (let i = 0; i < 15; i++) {
+      initialStars.push({
+        x: 30 + i * 40 + Math.random() * 50,
+        y: 150 + Math.random() * 300,
+        collected: false,
+        id: i
+      });
     }
-  };
+    
+    setAnchors(treeAnchors);
+    setObstacles(initialObstacles);
+    setStars(initialStars);
+  }, []);
 
   // Game loop
   useEffect(() => {
-    if (!gameStarted || gameOver) return;
-
-    const gameLoop = setInterval(() => {
-      setMonkey(currentMonkey => {
-        let newMonkey = { ...currentMonkey };
-
-        if (newMonkey.isSwinging) {
-          // Swinging physics
-          const currentTree = trees[newMonkey.currentTree];
-          if (currentTree) {
-            newMonkey.angle += 0.05; // Swing speed
-            newMonkey.x = currentTree.x + Math.cos(newMonkey.angle) * newMonkey.swingRadius;
-            newMonkey.y = currentTree.y + Math.sin(newMonkey.angle) * newMonkey.swingRadius;
-          }
+    if (gameState === 'playing') {
+      gameLoopRef.current = setInterval(() => {
+        if (isSwinging) {
+          // Swinging physics - pendulum motion
+          setAngle(prevAngle => {
+            // Add swing momentum
+            const swingForce = Math.sin(prevAngle) * SWING_SPEED;
+            const newAngle = prevAngle + velocityX - swingForce;
+            
+            // Calculate player position based on pendulum
+            const newX = currentAnchor.x + Math.sin(newAngle) * ropeLength;
+            const newY = currentAnchor.y + Math.cos(newAngle) * ropeLength;
+            
+            setPlayerX(newX);
+            setPlayerY(newY);
+            
+            // Apply pendulum physics
+            setVelocityX(prev => (prev - swingForce) * 0.995);
+            
+            return newAngle;
+          });
         } else {
-          // Free fall/flight physics
-          newMonkey.vy += GRAVITY;
-          newMonkey.x += newMonkey.vx;
-          newMonkey.y += newMonkey.vy;
-
-          // Check if monkey falls below screen
-          if (newMonkey.y > GAME_HEIGHT) {
-            setGameOver(true);
-            return currentMonkey;
-          }
-
-          // Check if monkey goes too far left (falls behind)
-          if (newMonkey.x < -100) {
-            setGameOver(true);
-            return currentMonkey;
-          }
-        }
-
-        return newMonkey;
-      });
-
-      // Update grapple hook
-      setGrappleHook(currentHook => {
-        if (currentHook) {
-          // Check if hook reaches target
-          const hookDistance = Math.sqrt(
-            Math.pow(currentHook.endX - monkey.x, 2) + 
-            Math.pow(currentHook.endY - monkey.y, 2)
-          );
-          
-          if (hookDistance < 60) {
-            // Attach to tree
-            const treeIndex = trees.findIndex(tree => tree.id === currentHook.targetTree.id);
-            const attachAngle = Math.atan2(
-              monkey.y - currentHook.targetTree.y,
-              monkey.x - currentHook.targetTree.x
-            );
+          // Free fall physics
+          setPlayerX(prev => prev + velocityX);
+          setPlayerY(prev => {
+            const newY = prev + velocityY;
             
-            setMonkey(prev => ({
-              ...prev,
-              isSwinging: true,
-              currentTree: treeIndex,
-              angle: attachAngle,
-              swingRadius: Math.min(hookDistance, 120),
-              vx: 0,
-              vy: 0
-            }));
-            return null; // Remove grapple hook
-          }
-        }
-        return currentHook;
-      });
-
-      // Update obstacles
-      setObstacles(currentObstacles => {
-        return currentObstacles.map(obstacle => ({
-          ...obstacle,
-          x: obstacle.x + obstacle.vx,
-          y: obstacle.y + obstacle.vy,
-          vy: obstacle.vy + GRAVITY * 0.5
-        })).filter(obstacle => 
-          obstacle.x > -50 && obstacle.x < GAME_WIDTH + 50 && 
-          obstacle.y < GAME_HEIGHT + 50
-        );
-      });
-
-      // Check obstacle collisions
-      setObstacles(currentObstacles => {
-        const newObstacles = currentObstacles.filter(obstacle => {
-          const distance = Math.sqrt(
-            Math.pow(obstacle.x - monkey.x, 2) + 
-            Math.pow(obstacle.y - monkey.y, 2)
-          );
-          
-          if (distance < 30) {
-            setGameOver(true);
-            return false;
-          }
-          return true;
-        });
-        return newObstacles;
-      });
-
-      // Check collectible collisions
-      setCollectibles(currentCollectibles => {
-        return currentCollectibles.map(collectible => {
-          if (!collectible.collected) {
-            const distance = Math.sqrt(
-              Math.pow(collectible.x - monkey.x, 2) + 
-              Math.pow(collectible.y - monkey.y, 2)
-            );
-            
-            if (distance < 25) {
-              setScore(prev => prev + 1);
-              
-              // Add particles effect
-              const newParticles = [];
-              for (let i = 0; i < 5; i++) {
-                newParticles.push({
-                  id: Math.random(),
-                  x: collectible.x,
-                  y: collectible.y,
-                  vx: (Math.random() - 0.5) * 4,
-                  vy: (Math.random() - 0.5) * 4,
-                  life: 30,
-                  char: '✨'
-                });
-              }
-              setParticles(prev => [...prev, ...newParticles]);
-              
-              return { ...collectible, collected: true };
+            // Ground collision
+            if (newY > GAME_HEIGHT - 40) {
+              setGameState('gameOver');
+              return GAME_HEIGHT - 40;
             }
+            
+            // Side wall collision  
+            if (prev < 0 || prev > GAME_WIDTH - 30) {
+              setGameState('gameOver');
+            }
+            
+            return newY;
+          });
+          
+          setVelocityY(prev => prev + GRAVITY);
+          setVelocityX(prev => prev * 0.98);
+        }
+        
+        // Scroll world to follow player (moving forward effect)
+        if (playerX > GAME_WIDTH * 0.7 && isSwinging) {
+          // Move all elements left to simulate forward movement
+          setAnchors(prev => prev.map(anchor => ({ ...anchor, x: anchor.x - 2 })));
+          setObstacles(prev => prev.map(obstacle => ({ ...obstacle, x: obstacle.x - 2 })));
+          setStars(prev => prev.map(star => ({ ...star, x: star.x - 2 })));
+          setCurrentAnchor(prev => ({ ...prev, x: prev.x - 2 }));
+          setPlayerX(prev => prev - 2);
+          
+          // Add new anchors on the right
+          if (Math.random() < 0.3) {
+            setAnchors(prev => [...prev, {
+              x: GAME_WIDTH + 50,
+              y: 80,
+              id: Date.now()
+            }]);
           }
-          return collectible;
+          
+          // Add new obstacles
+          if (Math.random() < 0.2) {
+            setObstacles(prev => [...prev, {
+              x: GAME_WIDTH + 30,
+              y: 250 + Math.random() * 250,
+              width: 50,
+              height: 15,
+              id: Date.now()
+            }]);
+          }
+          
+          // Add new stars
+          if (Math.random() < 0.4) {
+            setStars(prev => [...prev, {
+              x: GAME_WIDTH + 20,
+              y: 150 + Math.random() * 300,
+              collected: false,
+              id: Date.now()
+            }]);
+          }
+          
+          setScore(prev => prev + 1);
+        }
+        
+        // Clean up off-screen elements
+        setAnchors(prev => prev.filter(anchor => anchor.x > -50));
+        setObstacles(prev => prev.filter(obstacle => obstacle.x > -100));
+        setStars(prev => prev.filter(star => star.x > -50));
+        
+        // Check star collection
+        setStars(prev => prev.map(star => {
+          if (!star.collected && 
+              Math.abs(star.x - playerX) < 25 && 
+              Math.abs(star.y - playerY) < 25) {
+            setScore(s => s + 10);
+            return { ...star, collected: true };
+          }
+          return star;
+        }));
+        
+        // Check obstacle collision
+        obstacles.forEach(obstacle => {
+          if (playerX < obstacle.x + obstacle.width &&
+              playerX + 30 > obstacle.x &&
+              playerY < obstacle.y + obstacle.height &&
+              playerY + 30 > obstacle.y) {
+            setGameState('gameOver');
+          }
         });
+        
+      }, 16);
+    }
+    
+    return () => clearInterval(gameLoopRef.current);
+  }, [gameState, isSwinging, velocityX, velocityY, playerX, playerY, currentAnchor, ropeLength, obstacles]);
+
+  const findNearestAnchor = () => {
+    let nearest = null;
+    let minDistance = ROPE_THROW_RANGE;
+    
+    anchors.forEach(anchor => {
+      const distance = Math.sqrt(
+        Math.pow(anchor.x - playerX, 2) + Math.pow(anchor.y - playerY, 2)
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = anchor;
+      }
+    });
+    
+    return nearest;
+  };
+
+  const handleTap = () => {
+    if (gameState === 'ready') {
+      setGameState('playing');
+      return;
+    }
+    
+    if (gameState === 'playing') {
+      if (isSwinging) {
+        // Let go of the rope
+        setIsSwinging(false);
+        // Convert swing momentum to forward velocity
+        const forwardVelocity = Math.abs(velocityX) * 15 + 3;
+        setVelocityX(forwardVelocity);
+        setVelocityY(-2);
+      } else {
+        // Try to throw rope to nearest anchor
+        const nearestAnchor = findNearestAnchor();
+        if (nearestAnchor) {
+          setIsSwinging(true);
+          setCurrentAnchor(nearestAnchor);
+          
+          // Calculate rope length and initial angle
+          const dx = playerX - nearestAnchor.x;
+          const dy = playerY - nearestAnchor.y;
+          const newRopeLength = Math.sqrt(dx * dx + dy * dy);
+          const newAngle = Math.atan2(dx, dy);
+          
+          setRopeLength(newRopeLength);
+          setAngle(newAngle);
+          setVelocityX(velocityX * 0.1); // Convert linear to angular velocity
+          setVelocityY(0);
+        }
+      }
+    }
+    
+    if (gameState === 'gameOver') {
+      resetGame();
+    }
+  };
+
+  const resetGame = () => {
+    setGameState('ready');
+    setScore(0);
+    setPlayerX(100);
+    setPlayerY(200);
+    setVelocityX(0);
+    setVelocityY(0);
+    setIsSwinging(true);
+    setCurrentAnchor({ x: 100, y: 80 });
+    setAngle(0);
+    setRopeLength(120);
+    
+    // Reset positions
+    const treeAnchors = [];
+    for (let i = 0; i < 8; i++) {
+      treeAnchors.push({
+        x: 80 + i * 50,
+        y: 80,
+        id: i
       });
-
-      // Update particles
-      setParticles(currentParticles => {
-        return currentParticles
-          .map(particle => ({
-            ...particle,
-            x: particle.x + particle.vx,
-            y: particle.y + particle.vy,
-            life: particle.life - 1
-          }))
-          .filter(particle => particle.life > 0);
-      });
-
-      // Update distance
-      setDistance(monkey.x);
-
-    }, 16); // ~60 FPS
-
-    return () => clearInterval(gameLoop);
-  }, [gameStarted, gameOver, monkey.x, monkey.y, trees]);
+    }
+    setAnchors(treeAnchors);
+    setStars(prev => prev.map(star => ({ ...star, collected: false })));
+  };
 
   return (
-    <div className="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
-      <Head>
-        <title>Monkey Swing - Adventure Game</title>
-      </Head>
-
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-slate-200">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => router.back()}
-              className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center hover:bg-slate-200 transition-colors"
-            >
-              <IconArrowLeft size={20} className="text-slate-600" />
-            </motion.button>
-            
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">🐒 Monkey Swing</h1>
-              <p className="text-slate-600 text-sm">Bantu monyet berayun melewati sungai dengan capit mekanik</p>
-            </div>
-          </div>
-        </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-green-300 to-blue-400 p-4">
+      <div className="bg-white rounded-lg shadow-lg p-4 mb-4">
+        <h1 className="text-3xl font-bold text-center text-green-800 mb-2">Grasp Gasp</h1>
+        <p className="text-center text-gray-600 text-sm">Score: {score}</p>
       </div>
-
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-green-100 to-blue-200 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 border-4 border-green-300">
-          <h1 className="text-4xl font-bold text-green-800 text-center mb-4">
-            🐒 Monkey Swing Adventure 🌴
-          </h1>
-          
-          <div className="text-center mb-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-2xl font-bold text-green-700">
-                  {score}
-                </div>
-                <div className="text-sm text-green-600">Points</div>
-              </div>
-              
-              <div>
-                <div className="text-2xl font-bold text-blue-700">
-                  {Math.floor(distance / 10)}m
-                </div>
-                <div className="text-sm text-blue-600">Distance</div>
-              </div>
-              
-              <div>
-                <div className="text-2xl font-bold text-purple-700">
-                  {Math.floor(monkey.currentTree)}
-                </div>
-                <div className="text-sm text-purple-600">Trees</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Game Instructions */}
-          <div className="flex justify-center gap-4 mb-4 text-sm">
-            <div className="flex items-center gap-1">
-              <span>🐒</span>
-              <span className="text-green-600">Monyet</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🌴</span>
-              <span className="text-brown-600">Pohon</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🍌</span>
-              <span className="text-red-600">Hindari!</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>⭐</span>
-              <span className="text-yellow-600">+1 Point</span>
-            </div>
-          </div>
-
-          <div 
-            className="relative border-4 border-green-400 rounded-lg mx-auto mb-4 cursor-pointer overflow-hidden bg-gradient-to-b from-sky-200 to-green-300"
-            style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}
-            onClick={handleTap}
-          >
-            {/* River background */}
-            <div className="absolute bottom-0 left-0 w-full h-32 bg-blue-400 opacity-70"></div>
-            
-            {/* Trees */}
-            {trees.map((tree, index) => (
-              <div
-                key={tree.id}
-                className="absolute"
+      
+      <div 
+        className="relative bg-gradient-to-b from-sky-200 to-green-200 rounded-lg shadow-xl overflow-hidden cursor-pointer"
+        style={{ width: GAME_WIDTH, height: GAME_HEIGHT }}
+        onClick={handleTap}
+      >
+        {/* Tree branches */}
+        <div className="absolute top-16 left-0 w-full h-12 bg-gradient-to-b from-green-700 to-green-800 rounded-lg">
+          <div className="absolute inset-0 opacity-40">
+            {Array.from({length: 15}).map((_, i) => (
+              <div 
+                key={i}
+                className="absolute bg-green-900 rounded-full opacity-60"
                 style={{
-                  left: tree.x - monkey.x + GAME_WIDTH / 4,
-                  top: tree.y - 100,
-                  transform: 'translate(-50%, 0)',
+                  left: `${i * 7}%`,
+                  top: `${2 + (i % 3) * 8}px`,
+                  width: '6px',
+                  height: '3px'
                 }}
-              >
-                <div className="text-6xl">🌴</div>
-                {/* Tree trunk/branch */}
-                <div 
-                  className="absolute bg-amber-600 rounded"
-                  style={{
-                    top: 60,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: 80,
-                    height: 8
-                  }}
-                ></div>
-              </div>
+              />
             ))}
-
-            {/* Obstacles (bananas) */}
-            {obstacles.map((obstacle) => (
-              <motion.div
-                key={obstacle.id}
-                className="absolute text-3xl"
-                style={{
-                  left: obstacle.x - monkey.x + GAME_WIDTH / 4,
-                  top: obstacle.y,
-                  transform: 'translate(-50%, -50%)',
-                }}
-                animate={{
-                  rotate: [0, 360],
-                }}
-                transition={{
-                  duration: 1,
-                  repeat: Infinity,
-                  ease: "linear",
-                }}
-              >
-                🍌
-              </motion.div>
-            ))}
-
-            {/* Collectibles */}
-            {collectibles.map((collectible) => (
-              !collectible.collected && (
-                <motion.div
-                  key={collectible.id}
-                  className="absolute text-2xl"
-                  style={{
-                    left: collectible.x - monkey.x + GAME_WIDTH / 4,
-                    top: collectible.y,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  animate={{
-                    scale: [1, 1.2, 1],
-                    rotate: [0, 10, -10, 0],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                >
-                  ⭐
-                </motion.div>
-              )
-            ))}
-
-            {/* Particles */}
-            {particles.map((particle) => (
-              <motion.div
-                key={particle.id}
-                className="absolute text-lg pointer-events-none"
-                style={{
-                  left: particle.x - monkey.x + GAME_WIDTH / 4,
-                  top: particle.y,
-                  transform: 'translate(-50%, -50%)',
-                }}
-                animate={{
-                  scale: [1, 1.5, 0],
-                  opacity: [1, 0.8, 0],
-                }}
-                transition={{
-                  duration: 1,
-                  ease: "easeOut",
-                }}
-              >
-                {particle.char}
-              </motion.div>
-            ))}
-
-            {/* Grapple Hook */}
-            {grappleHook && (
-              <>
-                <svg
-                  className="absolute top-0 left-0 pointer-events-none"
-                  width={GAME_WIDTH}
-                  height={GAME_HEIGHT}
-                >
-                  <line
-                    x1={GAME_WIDTH / 4}
-                    y1={monkey.y}
-                    x2={grappleHook.endX - monkey.x + GAME_WIDTH / 4}
-                    y2={grappleHook.endY}
-                    stroke="#654321"
-                    strokeWidth="4"
-                    strokeDasharray="5,5"
-                    className="animate-pulse"
-                  />
-                </svg>
-                {/* Mechanical claw at the end */}
-                <motion.div
-                  className="absolute text-2xl z-10"
-                  style={{
-                    left: grappleHook.endX - monkey.x + GAME_WIDTH / 4,
-                    top: grappleHook.endY,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                  animate={{
-                    rotate: [0, 360],
-                  }}
-                  transition={{
-                    duration: 0.5,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
-                >
-                  🦾
-                </motion.div>
-              </>
-            )}
-
-            {/* Monkey */}
-            <motion.div
-              className="absolute text-4xl z-20"
-              style={{
-                left: GAME_WIDTH / 4,
-                top: monkey.y,
-                transform: 'translate(-50%, -50%)',
-              }}
-              animate={monkey.isSwinging ? {
-                rotate: [0, 15, -15, 0],
-                scale: [1, 1.1, 1],
-              } : {
-                rotate: monkey.vx > 0 ? 15 : monkey.vx < 0 ? -15 : 0,
-              }}
-              transition={{
-                duration: 0.4,
-                repeat: monkey.isSwinging ? Infinity : 0,
-                ease: "easeInOut",
-              }}
-            >
-              🐒
-              {/* Show excitement when swinging fast */}
-              {monkey.isSwinging && Math.abs(monkey.vx) > 5 && (
-                <motion.div
-                  className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-lg"
-                  animate={{
-                    y: [-5, -15, -5],
-                    opacity: [0.7, 1, 0.7],
-                  }}
-                  transition={{
-                    duration: 0.8,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                >
-                  💨
-                </motion.div>
-              )}
-            </motion.div>
-
-            {/* Swing rope when swinging */}
-            {monkey.isSwinging && trees[monkey.currentTree] && (
-              <>
-                <svg
-                  className="absolute top-0 left-0 pointer-events-none"
-                  width={GAME_WIDTH}
-                  height={GAME_HEIGHT}
-                >
-                  <line
-                    x1={trees[monkey.currentTree].x - monkey.x + GAME_WIDTH / 4}
-                    y1={trees[monkey.currentTree].y}
-                    x2={GAME_WIDTH / 4}
-                    y2={monkey.y}
-                    stroke="#8B4513"
-                    strokeWidth="4"
-                  />
-                </svg>
-                
-                {/* Swing direction indicator */}
-                <motion.div
-                  className="absolute text-2xl"
-                  style={{
-                    left: GAME_WIDTH / 4 + 30,
-                    top: monkey.y - 30,
-                  }}
-                  animate={{
-                    x: [0, Math.cos(monkey.angle) * 20, 0],
-                    opacity: [0.5, 1, 0.5],
-                  }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                >
-                  {Math.cos(monkey.angle) > 0 ? "➡️" : "⬅️"}
-                </motion.div>
-              </>
-            )}
-          </div>
-
-          <div className="text-center space-y-2">
-            {!gameStarted && !gameOver && (
-              <div className="text-green-700">
-                <p className="text-lg font-semibold">Tap to Start!</p>
-                <p className="text-sm">Tap untuk ayun dan lepas, tap lagi untuk tembak capit</p>
-              </div>
-            )}
-            
-            {gameOver && (
-              <div className="text-red-600">
-                <p className="text-xl font-bold">Game Over!</p>
-                <p className="text-lg">Score: {score} | Distance: {Math.floor(distance / 10)}m</p>
-                <p className="text-sm">Tap to restart</p>
-              </div>
-            )}
-            
-            {gameStarted && !gameOver && (
-              <div className="text-green-700">
-                <p className="text-sm">
-                  {monkey.isSwinging 
-                    ? "Tap untuk lepas ayunan!" 
-                    : grappleHook 
-                      ? "Capit sedang terbang..." 
-                      : "Tap untuk tembak capit mekanik!"
-                  }
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Mobile-friendly tap button */}
-          <div className="mt-4 flex justify-center">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleTap}
-              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full text-lg shadow-lg"
-            >
-              {!gameStarted ? '🐒 Start' : gameOver ? '🔄 Restart' : 
-               monkey.isSwinging ? '🚀 Release' : 
-               grappleHook ? '⏳ Flying...' : '🦾 Shoot'}
-            </motion.button>
-          </div>
-
-          <div className="mt-4 text-center text-sm text-green-600">
-            <p>🎮 Mini Game Paradise - Monkey Swing 🎮</p>
-            <p className="text-xs mt-1">Gunakan gravitasi dan momentum untuk berayun!</p>
           </div>
         </div>
+
+        {/* Anchor points on tree */}
+        {anchors.map(anchor => (
+          <div
+            key={anchor.id}
+            className="absolute w-3 h-3 bg-brown-600 rounded-full border border-brown-800"
+            style={{
+              left: anchor.x - 6,
+              top: anchor.y - 6,
+            }}
+          />
+        ))}
+
+        {/* Show rope throw range when not swinging */}
+        {!isSwinging && (
+          <div 
+            className="absolute border-2 border-dashed border-yellow-400 rounded-full opacity-50"
+            style={{
+              left: playerX + 15 - ROPE_THROW_RANGE,
+              top: playerY + 15 - ROPE_THROW_RANGE,
+              width: ROPE_THROW_RANGE * 2,
+              height: ROPE_THROW_RANGE * 2,
+            }}
+          />
+        )}
+
+        {/* Background clouds */}
+        <div className="absolute top-32 left-8 w-14 h-7 bg-white rounded-full opacity-50"></div>
+        <div className="absolute top-48 right-12 w-16 h-8 bg-white rounded-full opacity-60"></div>
+
+        {/* Obstacles */}
+        {obstacles.map(obstacle => (
+          <div
+            key={obstacle.id}
+            className="absolute bg-red-500 rounded shadow-md"
+            style={{
+              left: obstacle.x,
+              top: obstacle.y,
+              width: obstacle.width,
+              height: obstacle.height
+            }}
+          />
+        ))}
+
+        {/* Stars */}
+        {stars.map(star => (
+          !star.collected && (
+            <div
+              key={star.id}
+              className="absolute text-yellow-400 text-xl animate-pulse"
+              style={{
+                left: star.x - 10,
+                top: star.y - 10,
+              }}
+            >
+              ⭐
+            </div>
+          )
+        ))}
+
+        {/* Rope */}
+        {isSwinging && (
+          <svg className="absolute inset-0 pointer-events-none">
+            <line
+              x1={currentAnchor.x}
+              y1={currentAnchor.y}
+              x2={playerX + 15}
+              y2={playerY + 15}
+              stroke="#8B4513"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </svg>
+        )}
+
+        {/* Player */}
+        <div
+          className="absolute transition-all duration-75"
+          style={{
+            left: playerX,
+            top: playerY,
+            width: 30,
+            height: 30,
+          }}
+        >
+          <div className="w-full h-full bg-amber-600 rounded-full border-2 border-amber-800">
+            <div className="absolute inset-1 bg-amber-400 rounded-full"></div>
+            <div className="absolute top-1 left-1 w-2 h-2 bg-black rounded-full"></div>
+            <div className="absolute top-1 right-1 w-2 h-2 bg-black rounded-full"></div>
+            <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-black rounded-full"></div>
+          </div>
+        </div>
+
+        {/* Game state overlays */}
+        {gameState === 'ready' && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg p-6 text-center">
+              <h2 className="text-2xl font-bold text-green-800 mb-2">Grasp Gasp</h2>
+              <p className="text-gray-600 mb-4">Tap sekali untuk lepas tali<br/>Tap lagi untuk lempar tali baru<br/>Tali tidak menempel ke lubang!</p>
+              <p className="text-sm text-gray-500">Tap untuk mulai berayun!</p>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'gameOver' && (
+          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg p-6 text-center">
+              <h2 className="text-2xl font-bold text-red-600 mb-2">Game Over!</h2>
+              <p className="text-gray-600 mb-2">Final Score: {score}</p>
+              <p className="text-sm text-gray-500">Tap untuk main lagi!</p>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      <div className="mt-4 text-center text-white">
+        <p className="text-sm">
+          {gameState === 'playing' ? 
+            (isSwinging ? 'Tap untuk lepas tali' : 'Tap untuk lempar tali ke titik terdekat') : 
+            'Berayun dari satu tali ke tali lainnya!'}
+        </p>
       </div>
     </div>
   );
 };
 
-export default MonkeySwing;
+export default GraspGasp;
