@@ -128,7 +128,10 @@ const CloudflareTurnstile = ({
       }
     };
 
-    initTurnstile();
+    // Only initialize if not already loaded or loading
+    if (!isLoaded && !isLoading) {
+      initTurnstile();
+    }
 
     return () => {
       mounted = false;
@@ -143,7 +146,7 @@ const CloudflareTurnstile = ({
         widgetRef.current = null;
       }
     };
-  }, [theme, size, language, onVerify, onExpire, onError, onLoad]);
+  }, []); // Only run once on mount
 
   // Reset widget
   const reset = () => {

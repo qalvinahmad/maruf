@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Toast, showToast } from '../../components/ui/toast';
 import { useAuth } from '../../context/AuthContext';
 
@@ -91,9 +91,8 @@ export default function Register() {
     unique: true
   });
 
-  // Remove old Cloudflare script loading
-  // Turnstile handlers
-  const handleTurnstileVerify = async (token) => {
+  // Turnstile handlers with useCallback to prevent re-renders
+  const handleTurnstileVerify = useCallback(async (token) => {
     console.log('Turnstile token received:', token);
     
     // Handle development mode token
@@ -130,27 +129,27 @@ export default function Register() {
       setCloudflareVerified(false);
       showToast.error('Gagal memverifikasi keamanan');
     }
-  };
+  }, []); // Empty dependency array to prevent recreating
 
-  const handleTurnstileExpire = () => {
+  const handleTurnstileExpire = useCallback(() => {
     console.log('Turnstile token expired');
     setCloudflareToken('');
     setCloudflareVerified(false);
     showToast.warning('Verifikasi keamanan kedaluwarsa, silakan verifikasi ulang');
-  };
+  }, []);
 
-  const handleTurnstileError = (error) => {
+  const handleTurnstileError = useCallback((error) => {
     console.error('Turnstile error:', error);
     setCloudflareVerified(false);
     showToast.error('Terjadi kesalahan pada verifikasi keamanan');
-  };
+  }, []);
 
-  const handleTurnstileLoad = () => {
+  const handleTurnstileLoad = useCallback(() => {
     setTurnstileLoading(false);
-  };
+  }, []);
 
   // Check if password contains personal information
-  const containsPersonalInfo = (pwd) => {
+  const containsPersonalInfo = useCallback((pwd) => {
     const lowerPwd = pwd.toLowerCase();
     const lowerName = fullName.toLowerCase();
     const lowerEmail = email.toLowerCase().split('@')[0];
@@ -167,10 +166,10 @@ export default function Register() {
     ];
     
     return commonPatterns.some(pattern => pattern.test(pwd));
-  };
+  }, [fullName, email]);
 
   // Password validation function
-  const validatePassword = (pwd) => {
+  const validatePassword = useCallback((pwd) => {
     const validation = {
       length: pwd.length >= 8,
       uppercase: /[A-Z]/.test(pwd),
@@ -182,10 +181,10 @@ export default function Register() {
 
     setPasswordValidation(validation);
     return validation;
-  };
+  }, [containsPersonalInfo]);
 
   // Handle password change
-  const handlePasswordChange = (e) => {
+  const handlePasswordChange = useCallback((e) => {
     const newPassword = e.target.value;
     setPassword(newPassword);
     setError('');
@@ -196,35 +195,31 @@ export default function Register() {
     } else {
       setShowPasswordValidation(false);
     }
-  };
+  }, [validatePassword]);
 
   // Enhanced form validation
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     if (!fullName.trim()) {
       const errorMsg = 'Nama lengkap tidak boleh kosong';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!email.trim()) {
       const errorMsg = 'Email tidak boleh kosong';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!/\S+@\S+\.\S+/.test(email)) {
       const errorMsg = 'Format email tidak valid';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!password.trim()) {
       const errorMsg = 'Password tidak boleh kosong';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
@@ -233,54 +228,47 @@ export default function Register() {
     if (!validation.length) {
       const errorMsg = 'Password minimal 8 karakter';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!validation.uppercase) {
       const errorMsg = 'Password harus mengandung huruf besar';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!validation.number) {
       const errorMsg = 'Password harus mengandung angka';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!validation.special) {
       const errorMsg = 'Password harus mengandung karakter khusus';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     if (!validation.noPersonalInfo) {
       const errorMsg = 'Password tidak boleh mengandung informasi pribadi';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
 
     if (password !== confirmPassword) {
       const errorMsg = 'Password tidak cocok';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
 
     if (!cloudflareVerified) {
       const errorMsg = 'Silakan verifikasi Cloudflare terlebih dahulu';
       setError(errorMsg);
-      showToast.error(errorMsg);
       return false;
     }
     
     return true;
-  };
+  }, [fullName, email, password, confirmPassword, cloudflareVerified, validatePassword]);
 
   // Enhanced error handling
   const getErrorMessage = (error) => {
