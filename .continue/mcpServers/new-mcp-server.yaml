@@ -1,0 +1,12 @@
+name: Supabase MCP Server
+version: 0.0.1
+schema: v1
+
+mcpServers:
+- name: supabase-mcp
+  command: node
+  args:
+  - /Users/alvinahmad/Downloads/nextjs-tailwindcss-navbar-main/server/server.js
+  env:
+    SUPABASE_URL: "https://fiilbotjhroljxejlwcs.supabase.co"
+    SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxib3RqaHJvbGp4ZWpsd2NzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDMzMzU5MiwiZXhwIjoyMDY5OTA5NTkyfQ.alwrrvS2dMT7P17LII-ELZAN-DSPDc-GsS99vLZQ6lM"

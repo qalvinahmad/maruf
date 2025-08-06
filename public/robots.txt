@@ -1,0 +1,41 @@
+# robots.txt for almakruf.com
+
+User-agent: *
+Allow: /
+
+# Allow important pages
+Allow: /authentication/
+Allow: /dashboard/
+Allow: /api/
+
+# Disallow admin areas from search engines
+Disallow: /admin/
+Disallow: /dashboard/admin/
+Disallow: /api/admin/
+Disallow: /_next/
+Disallow: /private/
+
+# Allow search engines to access CSS and JS
+Allow: /_next/static/
+Allow: /static/
+Allow: /images/
+Allow: /icons/
+
+# Sitemap location
+Sitemap: https://almakruf.com/sitemap.xml
+
+# Crawl-delay for better server performance
+Crawl-delay: 1
+
+# Specific rules for major search engines
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 2
